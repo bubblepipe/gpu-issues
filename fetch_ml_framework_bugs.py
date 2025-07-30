@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Optional
 import time
 import argparse
+import os
 
 
 # Framework configurations with their GitHub repos and filters
@@ -42,23 +43,23 @@ FRAMEWORK_CONFIG = {
 }
 
 
-def fetch_framework_bugs(
+def fetch_bugs_for_date_range(
     framework: str,
-    since_date: str,
+    start_date: str,
+    end_date: str,
     per_page: int = 100,
     max_pages: Optional[int] = None,
-    output_file: Optional[str] = None,
     custom_filter: Optional[str] = None
 ) -> List[Dict]:
     """
-    Fetch closed bugs from a specific ML framework repository.
+    Fetch closed bugs from a specific ML framework repository for a date range.
     
     Args:
         framework: Name of the ML framework
-        since_date: Date in YYYY-MM-DD format to fetch bugs from
+        start_date: Start date in YYYY-MM-DD format
+        end_date: End date in YYYY-MM-DD format
         per_page: Number of results per page (max 100)
         max_pages: Maximum number of pages to fetch (None for all)
-        output_file: Optional file to save results to
         custom_filter: Optional custom filter to override the default base_filter
     
     Returns:
@@ -70,22 +71,30 @@ def fetch_framework_bugs(
     config = FRAMEWORK_CONFIG[framework]
     repo = config["repo"]
     
-    # Build query
+    # Build query with date range
     if custom_filter:
-        query = f"repo:{repo} {custom_filter} created:>={since_date}"
+        query = f"repo:{repo} {custom_filter} created:{start_date}..{end_date}"
     else:
-        query = f"repo:{repo} {config['base_filter']} created:>={since_date}"
+        query = f"repo:{repo} {config['base_filter']} created:{start_date}..{end_date}"
     
     all_bugs = []
     page = 1
     
     headers = {
         "Accept": "application/vnd.github.v3+json",
-        # Add your GitHub token here for higher rate limits (optional)
-        # "Authorization": "token YOUR_GITHUB_TOKEN"
     }
     
-    print(f"Fetching closed {framework.upper()} bugs created since {since_date}...")
+    # Add GitHub token if available (from environment variable)
+    github_token = os.environ.get('GITHUB_TOKEN')
+    if github_token:
+        headers["Authorization"] = f"token {github_token}"
+        print(f"✓ Using GitHub token for authentication (token starts with: {github_token[:20]}...)")
+        print("  Rate limits: 30 requests/minute, 5000 requests/hour")
+    else:
+        print("✗ No GitHub token found. Consider setting GITHUB_TOKEN environment variable.")
+        print("  Rate limits: 10 requests/minute, 60 requests/hour")
+    
+    print(f"Fetching {framework.upper()} bugs for {start_date} to {end_date}...")
     print(f"Query: {query}")
     
     base_url = "https://api.github.com/search/issues"
@@ -103,6 +112,12 @@ def fetch_framework_bugs(
         try:
             response = requests.get(base_url, params=params, headers=headers)
             response.raise_for_status()
+            
+            # Debug: Show rate limit info on first request
+            if page == 1:
+                rate_limit = response.headers.get('X-RateLimit-Limit', 'N/A')
+                rate_remaining = response.headers.get('X-RateLimit-Remaining', 'N/A')
+                print(f"  Rate limit: {rate_remaining}/{rate_limit} requests remaining")
             
             data = response.json()
             
@@ -161,6 +176,10 @@ def fetch_framework_bugs(
                 
                 print("\nResuming...")
                 continue  # Retry the same page
+            elif e.response.status_code == 422:
+                # GitHub returns 422 when trying to access beyond 1000 results
+                print(f"\nReached GitHub's 1000 result limit for this date range.")
+                break
             else:
                 print(f"Error fetching page {page}: {e}")
                 break
@@ -168,15 +187,90 @@ def fetch_framework_bugs(
             print(f"Error fetching page {page}: {e}")
             break
     
-    print(f"\nTotal bugs fetched: {len(all_bugs)}")
+    print(f"Fetched {len(all_bugs)} bugs for this date range")
+    
+    return all_bugs
+
+
+def fetch_framework_bugs(
+    framework: str,
+    since_date: str,
+    per_page: int = 100,
+    max_pages: Optional[int] = None,
+    output_file: Optional[str] = None,
+    custom_filter: Optional[str] = None,
+    chunk_days: int = 30
+) -> List[Dict]:
+    """
+    Fetch closed bugs from a specific ML framework repository, automatically
+    splitting date ranges to handle GitHub's 1000 result limit.
+    
+    Args:
+        framework: Name of the ML framework
+        since_date: Date in YYYY-MM-DD format to fetch bugs from
+        per_page: Number of results per page (max 100)
+        max_pages: Maximum number of pages to fetch (None for all)
+        output_file: Optional file to save results to
+        custom_filter: Optional custom filter to override the default base_filter
+        chunk_days: Number of days per chunk (default 30)
+    
+    Returns:
+        List of bug issues
+    """
+    print(f"Fetching closed {framework.upper()} bugs created since {since_date}...")
+    
+    # Parse dates
+    start_date = datetime.strptime(since_date, "%Y-%m-%d")
+    end_date = datetime.now()
+    
+    all_bugs = []
+    current_start = start_date
+    
+    # Process in chunks
+    while current_start < end_date:
+        # Calculate chunk end date
+        current_end = min(current_start + timedelta(days=chunk_days), end_date)
+        
+        # Fetch bugs for this chunk
+        chunk_bugs = fetch_bugs_for_date_range(
+            framework=framework,
+            start_date=current_start.strftime("%Y-%m-%d"),
+            end_date=current_end.strftime("%Y-%m-%d"),
+            per_page=per_page,
+            max_pages=max_pages,
+            custom_filter=custom_filter
+        )
+        
+        all_bugs.extend(chunk_bugs)
+        
+        # If we got close to 1000 results, use smaller chunks
+        if len(chunk_bugs) >= 900:
+            chunk_days = max(7, chunk_days // 2)
+            print(f"Reducing chunk size to {chunk_days} days due to high result count")
+        
+        # Move to next chunk
+        current_start = current_end + timedelta(days=1)
+    
+    print(f"\nTotal bugs fetched across all date ranges: {len(all_bugs)}")
+    
+    # Remove duplicates (in case of date boundary issues)
+    unique_bugs = []
+    seen_ids = set()
+    for bug in all_bugs:
+        if bug['id'] not in seen_ids:
+            unique_bugs.append(bug)
+            seen_ids.add(bug['id'])
+    
+    if len(unique_bugs) < len(all_bugs):
+        print(f"Removed {len(all_bugs) - len(unique_bugs)} duplicate bugs")
     
     # Save to file if requested
     if output_file:
         with open(output_file, 'w') as f:
-            json.dump(all_bugs, f, indent=2)
+            json.dump(unique_bugs, f, indent=2)
         print(f"Results saved to: {output_file}")
     
-    return all_bugs
+    return unique_bugs
 
 
 def analyze_bugs(bugs: List[Dict], framework: str) -> None:
@@ -286,6 +380,12 @@ Examples:
         action="store_true",
         help="List all supported frameworks and their configurations"
     )
+    parser.add_argument(
+        "--chunk-days",
+        type=int,
+        default=30,
+        help="Days per chunk when splitting date ranges (default: 30)"
+    )
     
     args = parser.parse_args()
     
@@ -311,7 +411,8 @@ Examples:
         since_date=since_date,
         max_pages=args.max_pages,
         output_file=args.output,
-        custom_filter=args.custom_filter
+        custom_filter=args.custom_filter,
+        chunk_days=args.chunk_days
     )
     
     # Analyze the results
