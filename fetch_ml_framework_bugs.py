@@ -17,27 +17,27 @@ import os
 FRAMEWORK_CONFIG = {
     "pytorch": {
         "repo": "pytorch/pytorch",
-        "base_filter": "is:issue is:closed label:triaged",
+        "filter": "is:issue is:closed label:triaged",
         "description": "PyTorch deep learning framework"
     },
     "tensorrt": {
         "repo": "NVIDIA/TensorRT",
-        "base_filter": "is:issue is:closed (label:bug OR label:Bug)",
+        "filter": "is:issue is:closed label:triaged",
         "description": "NVIDIA TensorRT high-performance deep learning inference"
     },
     "tensorflow": {
         "repo": "tensorflow/tensorflow",
-        "base_filter": "is:issue is:closed (label:\"type:bug\" OR label:\"type:build/install\" OR label:\"type:performance\")",
+        "filter": "is:issue is:closed label:type:bug",
         "description": "TensorFlow machine learning framework"
     },
     "jax": {
         "repo": "jax-ml/jax",
-        "base_filter": "is:issue is:closed (label:bug OR label:Bug)",
+        "filter": "is:issue is:closed label:bug",
         "description": "JAX composable transformations of Python+NumPy programs"
     },
     "triton": {
         "repo": "triton-lang/triton",
-        "base_filter": "is:issue is:closed (label:bug OR label:Bug)",
+        "filter": "is:issue is:closed label:bug",
         "description": "Triton language and compiler for GPU programming"
     }
 }
@@ -60,7 +60,7 @@ def fetch_bugs_for_date_range(
         end_date: End date in YYYY-MM-DD format
         per_page: Number of results per page (max 100)
         max_pages: Maximum number of pages to fetch (None for all)
-        custom_filter: Optional custom filter to override the default base_filter
+        custom_filter: Optional custom filter to override the default filter
     
     Returns:
         List of bug issues
@@ -75,7 +75,7 @@ def fetch_bugs_for_date_range(
     if custom_filter:
         query = f"repo:{repo} {custom_filter} created:{start_date}..{end_date}"
     else:
-        query = f"repo:{repo} {config['base_filter']} created:{start_date}..{end_date}"
+        query = f"repo:{repo} {config['filter']} created:{start_date}..{end_date}"
     
     all_bugs = []
     page = 1
@@ -211,7 +211,7 @@ def fetch_framework_bugs(
         per_page: Number of results per page (max 100)
         max_pages: Maximum number of pages to fetch (None for all)
         output_file: Optional file to save results to
-        custom_filter: Optional custom filter to override the default base_filter
+        custom_filter: Optional custom filter to override the default filter
         chunk_days: Number of days per chunk (default 30)
     
     Returns:
@@ -264,13 +264,31 @@ def fetch_framework_bugs(
     if len(unique_bugs) < len(all_bugs):
         print(f"Removed {len(all_bugs) - len(unique_bugs)} duplicate bugs")
     
+    # Filter out issues marked as duplicates (based on labels)
+    filtered_bugs = []
+    duplicate_count = 0
+    for bug in unique_bugs:
+        # Check if any label indicates this is a duplicate
+        is_duplicate = any(
+            'duplicate' in label['name'].lower() 
+            for label in bug.get('labels', [])
+        )
+        
+        if not is_duplicate:
+            filtered_bugs.append(bug)
+        else:
+            duplicate_count += 1
+    
+    if duplicate_count > 0:
+        print(f"Filtered out {duplicate_count} issues marked as duplicates")
+    
     # Save to file if requested
     if output_file:
         with open(output_file, 'w') as f:
-            json.dump(unique_bugs, f, indent=2)
+            json.dump(filtered_bugs, f, indent=2)
         print(f"Results saved to: {output_file}")
     
-    return unique_bugs
+    return filtered_bugs
 
 
 def analyze_bugs(bugs: List[Dict], framework: str) -> None:
@@ -322,7 +340,7 @@ def list_frameworks():
         print(f"\n{name.upper()}")
         print(f"  Description: {config['description']}")
         print(f"  Repository: {config['repo']}")
-        print(f"  Default filter: {config['base_filter']}")
+        print(f"  Default filter: {config['filter']}")
 
 
 if __name__ == "__main__":
@@ -345,8 +363,8 @@ Examples:
     parser.add_argument(
         "--framework",
         type=str,
-        choices=list(FRAMEWORK_CONFIG.keys()),
-        help="ML framework to fetch bugs from"
+        choices=list(FRAMEWORK_CONFIG.keys()) + ['all'],
+        help="ML framework to fetch bugs from (use 'all' for all frameworks)"
     )
     parser.add_argument(
         "--days",
@@ -405,16 +423,61 @@ Examples:
     # Calculate the date to search from
     since_date = (datetime.now() - timedelta(days=args.days)).strftime("%Y-%m-%d")
     
-    # Fetch the bugs
-    bugs = fetch_framework_bugs(
-        framework=args.framework,
-        since_date=since_date,
-        max_pages=args.max_pages,
-        output_file=args.output,
-        custom_filter=args.custom_filter,
-        chunk_days=args.chunk_days
-    )
-    
-    # Analyze the results
-    if not args.no_analysis:
-        analyze_bugs(bugs, args.framework)
+    # Handle "all" framework option
+    if args.framework == 'all':
+        all_bugs = []
+        for fw_name in FRAMEWORK_CONFIG.keys():
+            print(f"\n{'='*60}")
+            print(f"Fetching bugs for {fw_name.upper()}")
+            print(f"{'='*60}")
+            
+            # Always save individual files for each framework
+            fw_output = f"{fw_name}_issues.json"
+            
+            fw_bugs = fetch_framework_bugs(
+                framework=fw_name,
+                since_date=since_date,
+                max_pages=args.max_pages,
+                output_file=fw_output,
+                custom_filter=args.custom_filter,
+                chunk_days=args.chunk_days
+            )
+            
+            # Add framework field to each bug
+            for bug in fw_bugs:
+                bug['framework'] = fw_name
+            
+            all_bugs.extend(fw_bugs)
+        
+        # Save combined results
+        if args.output:
+            with open(args.output, 'w') as f:
+                json.dump(all_bugs, f, indent=2)
+            print(f"\nCombined results saved to: {args.output}")
+        
+        # Analyze combined results
+        if not args.no_analysis:
+            print(f"\n{'='*60}")
+            print("COMBINED ANALYSIS FOR ALL FRAMEWORKS")
+            print(f"{'='*60}")
+            analyze_bugs(all_bugs, "ALL FRAMEWORKS")
+            
+            # Per-framework breakdown
+            print("\nPer-framework breakdown:")
+            for fw_name in FRAMEWORK_CONFIG.keys():
+                fw_bugs = [b for b in all_bugs if b.get('framework') == fw_name]
+                print(f"  {fw_name}: {len(fw_bugs)} bugs")
+    else:
+        # Single framework
+        bugs = fetch_framework_bugs(
+            framework=args.framework,
+            since_date=since_date,
+            max_pages=args.max_pages,
+            output_file=args.output,
+            custom_filter=args.custom_filter,
+            chunk_days=args.chunk_days
+        )
+        
+        # Analyze the results
+        if not args.no_analysis:
+            analyze_bugs(bugs, args.framework)
