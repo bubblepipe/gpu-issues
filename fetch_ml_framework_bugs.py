@@ -259,9 +259,11 @@ def fetch_framework_bugs(
     if len(unique_bugs) < len(all_bugs):
         print(f"Removed {len(all_bugs) - len(unique_bugs)} duplicate bugs")
     
-    # Filter out issues marked as duplicates (based on labels)
+    # Filter out issues marked as duplicates and bot-created issues
     filtered_bugs = []
     duplicate_count = 0
+    bot_count = 0
+    
     for bug in unique_bugs:
         # Check if any label indicates this is a duplicate
         is_duplicate = any(
@@ -269,13 +271,30 @@ def fetch_framework_bugs(
             for label in bug.get('labels', [])
         )
         
-        if not is_duplicate:
+        # Check if created by a bot
+        is_bot_created = False
+        if bug.get('user', {}).get('login', '').endswith('[bot]'):
+            is_bot_created = True
+        # Also check for common bot patterns in usernames
+        bot_patterns = ['bot]', 'automation', 'ci-', 'test-bot', 'github-actions']
+        username = bug.get('user', {}).get('login', '').lower()
+        if any(pattern in username for pattern in bot_patterns):
+            is_bot_created = True
+        # Check for automated test failure patterns in titles
+        if 'DISABLED test_' in bug.get('title', '') or 'CI failure' in bug.get('title', ''):
+            is_bot_created = True
+        
+        if not is_duplicate and not is_bot_created:
             filtered_bugs.append(bug)
-        else:
+        elif is_duplicate:
             duplicate_count += 1
+        elif is_bot_created:
+            bot_count += 1
     
     if duplicate_count > 0:
         print(f"Filtered out {duplicate_count} issues marked as duplicates")
+    if bot_count > 0:
+        print(f"Filtered out {bot_count} bot-created issues")
     
     # Save to file if requested
     if output_file:

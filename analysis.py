@@ -50,8 +50,16 @@ for framework in frameworks:
     except FileNotFoundError:
         print(f"{framework}: file not found")
 
+count = 0;
+for issues in issue_groups:
+    count += len(issues)
+
+print(f"Total issues found: {count}")
 
 for issues in issue_groups:
     selected_issues = random.sample(issues, min(20, len(issues)))
-    print_issues(selected_issues)
-    # exit(0);
+    # Print title and URL
+    for issue in selected_issues:
+        print(f"{issue['title']} \n{issue['html_url']}\n ")
+    print("\n\n=========================\n\n")
+    # break  # Only show first framework
