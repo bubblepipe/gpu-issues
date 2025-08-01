@@ -17,28 +17,23 @@ import os
 FRAMEWORK_CONFIG = {
     "pytorch": {
         "repo": "pytorch/pytorch",
-        "filter": "is:issue is:closed label:triaged",
-        "description": "PyTorch deep learning framework"
+        "filter": "is:issue is:closed label:triaged"
     },
     "tensorrt": {
         "repo": "NVIDIA/TensorRT",
-        "filter": "is:issue is:closed label:triaged",
-        "description": "NVIDIA TensorRT high-performance deep learning inference"
+        "filter": "is:issue is:closed label:triaged"
     },
     "tensorflow": {
         "repo": "tensorflow/tensorflow",
-        "filter": "is:issue is:closed label:type:bug",
-        "description": "TensorFlow machine learning framework"
+        "filter": "is:issue is:closed label:type:bug"
     },
     "jax": {
         "repo": "jax-ml/jax",
-        "filter": "is:issue is:closed label:bug",
-        "description": "JAX composable transformations of Python+NumPy programs"
+        "filter": "is:issue is:closed label:bug"
     },
     "triton": {
         "repo": "triton-lang/triton",
-        "filter": "is:issue is:closed label:bug",
-        "description": "Triton language and compiler for GPU programming"
+        "filter": "is:issue is:closed label:bug"
     }
 }
 
@@ -338,7 +333,6 @@ def list_frameworks():
     print("=" * 60)
     for name, config in FRAMEWORK_CONFIG.items():
         print(f"\n{name.upper()}")
-        print(f"  Description: {config['description']}")
         print(f"  Repository: {config['repo']}")
         print(f"  Default filter: {config['filter']}")
 
