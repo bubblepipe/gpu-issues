@@ -47,7 +47,7 @@ issue_groups = [];
 
 for framework in frameworks:
     try:
-        with open(f'{framework}_issues.json', 'r') as f:
+        with open(f'./issues/{framework}_issues.json', 'r') as f:
             # issues += json.load(f)
             issue_groups.append(json.load(f))
     except FileNotFoundError:
