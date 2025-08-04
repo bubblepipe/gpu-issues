@@ -116,7 +116,7 @@ BUG_HETEROGENEITY_LOOKUP = {
 import re
 
 categorized_issues = []
-result_files = glob.glob('/Users/bubblepipe/repo/gpu-bugs/llm_categorizations_8a083eed/results.tuples.*')
+result_files = glob.glob('/Users/bubblepipe/repo/gpu-bugs/llm_categorizations_a81e1dd0/results.tuples.*')
 
 for file in result_files:
     with open(file, 'r') as f:
