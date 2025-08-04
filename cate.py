@@ -3,6 +3,7 @@ import random
 import requests
 import os
 import sys
+from result import Ok, Err, Result
 from prompts import BUG_CATEGORIZATION_PROMPT
 from cates import BUG_TYPE_LOOKUP, BUG_SYMPTOM_LOOKUP, BUG_HETEROGENEITY_LOOKUP
 from results_loader import load_categorized_results, get_categorized_urls
@@ -77,46 +78,57 @@ def parse_bug_heterogeneity(code):
 
 def parse_llm_output(text):
     xs = [x.strip() for x in text.split(',')]
-    if (len(xs) != 3 or
-        xs[0] not in BUG_TYPE_LOOKUP or
-        xs[1] not in BUG_SYMPTOM_LOOKUP or
-        xs[2] not in BUG_HETEROGENEITY_LOOKUP):
-        print(f"Invalid output format: {text}")
-        sys.stderr.write(f"Invalid output format: {text}\n")
-        return None
-    return (parse_bug_type(xs[0]), parse_bug_symptom(xs[1]), parse_bug_heterogeneity(xs[2]))
+    if len(xs) != 3:
+        return Err(f"Expected 3 comma-separated values, got {len(xs)}. Original response: {text}")
+    
+    if xs[0] not in BUG_TYPE_LOOKUP:
+        return Err(f"Invalid bug type code: {xs[0]}. Original response: {text}")
+    
+    if xs[1] not in BUG_SYMPTOM_LOOKUP:
+        return Err(f"Invalid bug symptom code: {xs[1]}. Original response: {text}")
+    
+    if xs[2] not in BUG_HETEROGENEITY_LOOKUP:
+        return Err(f"Invalid bug heterogeneity code: {xs[2]}. Original response: {text}")
+    
+    return Ok((parse_bug_type(xs[0]), parse_bug_symptom(xs[1]), parse_bug_heterogeneity(xs[2])))
 
 def ask_gemini_2_5_flash(issue):
     api_key = os.getenv("GEMINI_API_KEY")
-    if api_key:
-        url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
-        headers = {
-            "Content-Type": "application/json",
-            "X-goog-api-key": api_key
-        }
-        data = {
-            "contents": [
-                {
-                    "parts": [ { "text": f"{BUG_CATEGORIZATION_PROMPT}{issue['html_url']}" } ]
-                }
-            ]
-        }
-        try:
-            response = requests.post(url, headers=headers, json=data)
-            response.raise_for_status()  # Raise an error for bad status codes
-            text = response.json()['candidates'][0]['content']['parts'][0]['text']
-            return parse_llm_output(text)
-        except requests.exceptions.RequestException as e:
-            sys.stderr.write(f"Network error calling Gemini API: {e}\n")
-            return None
-        except (IndexError, KeyError, ValueError) as e:
-            sys.stderr.write(f"Error parsing response from Gemini API: {e}\n")
-            return None
-        except Exception as e:
-            sys.stderr.write(f"Unexpected error with Gemini API: {e}\n")
-            return None
-    else:
-        return None
+    if not api_key:
+        return Err("GEMINI_API_KEY environment variable not set")
+    
+    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
+    headers = {
+        "Content-Type": "application/json",
+        "X-goog-api-key": api_key
+    }
+    data = {
+        "contents": [
+            {
+                "parts": [ { "text": f"{BUG_CATEGORIZATION_PROMPT}{issue['html_url']}" } ]
+            }
+        ]
+    }
+    
+    try:
+        response = requests.post(url, headers=headers, json=data)
+        response.raise_for_status()  # Raise an error for bad status codes
+        
+        # Extract the text from the response
+        json_response = response.json()
+        text = json_response['candidates'][0]['content']['parts'][0]['text']
+        
+        # Parse the LLM output and return the Result
+        return parse_llm_output(text)
+        
+    except requests.exceptions.RequestException as e:
+        return Err(f"Network error calling Gemini API: {e}")
+    except (IndexError, KeyError) as e:
+        return Err(f"Error parsing response from Gemini API: {e}. Response: {response.text if 'response' in locals() else 'No response'}")
+    except ValueError as e:
+        return Err(f"Invalid JSON response from Gemini API: {e}")
+    except Exception as e:
+        return Err(f"Unexpected error with Gemini API: {e}")
 
 
 def ask_sonnet_4(issue):
@@ -124,28 +136,43 @@ def ask_sonnet_4(issue):
 
 def ask_opus_4(issue):
     api_key = os.getenv("ANTHROPIC_API_KEY")
-    if api_key:
-        url = "https://api.anthropic.com/v1/messages"
-        headers = {
-            "x-api-key": api_key,
-            "anthropic-version": "2023-06-01",
-            "content-type": "application/json"
-        }
-        data = {
-            "model": "claude-opus-20240229",
-            "max_tokens": 1024,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": f"{BUG_CATEGORIZATION_PROMPT}{issue['html_url']}"
-                }
-            ]
-        }
+    if not api_key:
+        return Err("ANTHROPIC_API_KEY environment variable not set")
+    
+    url = "https://api.anthropic.com/v1/messages"
+    headers = {
+        "x-api-key": api_key,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json"
+    }
+    data = {
+        "model": "claude-opus-20240229",
+        "max_tokens": 1024,
+        "messages": [
+            {
+                "role": "user",
+                "content": f"{BUG_CATEGORIZATION_PROMPT}{issue['html_url']}"
+            }
+        ]
+    }
+    
+    try:
         response = requests.post(url, headers=headers, json=data)
-        text = response.json()["content"][0]["text"]
+        response.raise_for_status()
+        
+        json_response = response.json()
+        text = json_response["content"][0]["text"]
+        
         return parse_llm_output(text)
-    else:
-        return None
+        
+    except requests.exceptions.RequestException as e:
+        return Err(f"Network error calling Anthropic API: {e}")
+    except (IndexError, KeyError) as e:
+        return Err(f"Error parsing response from Anthropic API: {e}. Response: {response.text if 'response' in locals() else 'No response'}")
+    except ValueError as e:
+        return Err(f"Invalid JSON response from Anthropic API: {e}")
+    except Exception as e:
+        return Err(f"Unexpected error with Anthropic API: {e}")
 
 
 issues_categorized = []
@@ -167,13 +194,18 @@ for issues in issue_groups:
             url = issue['html_url']
             print(f"{title} \n{url}")
             result = ask_gemini_2_5_flash(issue)
-            if result is None :
+            if result.is_err():
+                error_msg = result.unwrap_err()
                 sys.stderr.write(f"Failed to categorize: {title} - {url}\n")
+                sys.stderr.write(f"Error: {error_msg}\n")
                 print()
                 continue
-            issues_categorized.append( (title, url, result[0], result[1], result[2] ) )
-            for line in list(result):
-                print(" - " + line.value)
+            
+            # Unwrap the successful result
+            categorization = result.unwrap()
+            issues_categorized.append( (title, url, categorization[0], categorization[1], categorization[2] ) )
+            for item in categorization:
+                print(" - " + item.value)
             print()
             # exit()
     else:
