@@ -2,14 +2,10 @@ import json
 import random
 import requests
 import os
-import glob
-import ast
 import sys
 from prompts import BUG_CATEGORIZATION_PROMPT
-from cates import (
-    BugType, BugSymptom, BugHeterogeneity,
-    BUG_TYPE_LOOKUP, BUG_SYMPTOM_LOOKUP, BUG_HETEROGENEITY_LOOKUP
-)
+from cates import BUG_TYPE_LOOKUP, BUG_SYMPTOM_LOOKUP, BUG_HETEROGENEITY_LOOKUP
+from results_loader import load_categorized_results, get_categorized_urls
 
 def print_issue(issue):
     """Pretty print a single issue in markdown format."""
@@ -67,24 +63,7 @@ for issues in issue_groups:
 
 
 # Load categorized issues from result tuple files
-import re
-
-categorized_issues = []
-result_files = glob.glob('/Users/bubblepipe/repo/gpu-bugs/llm_categorizations_a81e1dd0/results.tuples.*')
-
-for file in result_files:
-    with open(file, 'r') as f:
-        content = f.read().strip()
-        if content:
-            try:
-                # Replace enum representations with actual enum objects
-                content = re.sub(r"<(Bug\w+\.\w+): '[^']*'>", r"\1", content)
-                
-                # Now eval the cleaned content
-                tuples = eval(content)
-                categorized_issues.extend(tuples)
-            except Exception as e:
-                print(f"Error parsing tuples from file {file}: {e}")
+categorized_issues = load_categorized_results('/Users/bubblepipe/repo/gpu-bugs/llm_categorizations_a81e1dd0/results.tuples.*')
 
 def parse_bug_type(code):
     return BUG_TYPE_LOOKUP.get(code)
@@ -172,7 +151,7 @@ def ask_opus_4(issue):
 issues_categorized = []
 
 # Create a set of URLs that are already categorized for fast lookup
-categorized_urls = {issue[1] for issue in categorized_issues}
+categorized_urls = get_categorized_urls(categorized_issues)
 
 for issues in issue_groups:
     # Find issues that haven't been categorized yet
@@ -197,6 +176,7 @@ for issues in issue_groups:
             for line in list(result):
                 print(" - " + line.value)
             print()
+            # exit()
     else:
         print(f"All issues in this group have already been categorized")
     
