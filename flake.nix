@@ -1,0 +1,35 @@
+{
+  description = "GPU bugs analysis environment";
+
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    flake-utils.url = "github:numtide/flake-utils";
+  };
+
+  outputs = { self, nixpkgs, flake-utils }:
+    flake-utils.lib.eachDefaultSystem (system:
+      let
+        pkgs = nixpkgs.legacyPackages.${system};
+        
+        pythonPackages = pkgs.python311Packages;
+        pythonWithPackages = pythonPackages.python.withPackages (ps: with ps; [
+          matplotlib
+          numpy
+          requests
+        ]);
+      in
+      {
+        devShells.default = pkgs.mkShell {
+          buildInputs = with pkgs; [
+            pythonWithPackages
+          ];
+
+          shellHook = ''
+            echo "Python version: $(python --version)"
+            python -c "import matplotlib; print(f'  - matplotlib {matplotlib.__version__}')"
+            python -c "import numpy; print(f'  - numpy {numpy.__version__}')"
+            python -c "import requests; print(f'  - requests {requests.__version__}')"
+          '';
+        };
+      });
+}
