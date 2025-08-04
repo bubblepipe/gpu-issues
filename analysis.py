@@ -5,6 +5,7 @@ import os
 from enum import Enum
 import glob
 import ast
+import sys
 
 def print_issue(issue):
     """Pretty print a single issue in markdown format."""
@@ -173,7 +174,9 @@ def parse_llm_output(text):
         xs[0] not in BUG_TYPE_LOOKUP or
         xs[1] not in BUG_SYMPTOM_LOOKUP or
         xs[2] not in BUG_HETEROGENEITY_LOOKUP):
-        raise ValueError(f"Invalid output format: {text}")
+        print(f"Invalid output format: {text}")
+        sys.stderr.write(f"Invalid output format: {text}\n")
+        return None
     return (parse_bug_type(xs[0]), parse_bug_symptom(xs[1]), parse_bug_heterogeneity(xs[2]))
 
 def ask_gemini_2_5_flash(issue):
@@ -191,9 +194,20 @@ def ask_gemini_2_5_flash(issue):
                 }
             ]
         }
-        response = requests.post(url, headers=headers, json=data)
-        text = response.json()['candidates'][0]['content']['parts'][0]['text']
-        return parse_llm_output(text)
+        try:
+            response = requests.post(url, headers=headers, json=data)
+            response.raise_for_status()  # Raise an error for bad status codes
+            text = response.json()['candidates'][0]['content']['parts'][0]['text']
+            return parse_llm_output(text)
+        except requests.exceptions.RequestException as e:
+            sys.stderr.write(f"Network error calling Gemini API: {e}\n")
+            return None
+        except (IndexError, KeyError, ValueError) as e:
+            sys.stderr.write(f"Error parsing response from Gemini API: {e}\n")
+            return None
+        except Exception as e:
+            sys.stderr.write(f"Unexpected error with Gemini API: {e}\n")
+            return None
     else:
         return None
 
@@ -237,7 +251,7 @@ for issues in issue_groups:
     uncategorized_issues = [issue for issue in issues if issue['html_url'] not in categorized_urls]
     
     # Select up to 10 unique issues that haven't been categorized
-    num_to_select = min(10, len(uncategorized_issues))
+    num_to_select = min(25, len(uncategorized_issues))
     if num_to_select > 0:
         selected_issues = random.sample(uncategorized_issues, num_to_select)
         
@@ -247,6 +261,9 @@ for issues in issue_groups:
             url = issue['html_url']
             print(f"{title} \n{url}")
             result = ask_gemini_2_5_flash(issue)
+            if result is None:
+                sys.stderr.write(f"Failed to categorize: {title} - {url}\n")
+                continue
             issues_categorized.append( (title, url, result[0], result[1], result[2] ) )
             for line in list(result):
                 print(" - " + line.value)
