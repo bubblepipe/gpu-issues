@@ -3,6 +3,8 @@ import random
 import requests
 import os
 from enum import Enum
+import glob
+import ast
 
 def print_issue(issue):
     """Pretty print a single issue in markdown format."""
@@ -57,9 +59,6 @@ count = 0;
 for issues in issue_groups:
     count += len(issues)
 
-print(f"Total issues found: {count}")
-print()
-
 
 class BugType(Enum):
     NOT_A_BUG = "1.a not a bug"
@@ -110,7 +109,28 @@ BUG_HETEROGENEITY_LOOKUP = {
     "3.a": BugHeterogeneity.UNIVERSAL,
     "3.b": BugHeterogeneity.BACKEND_SPECIFIC,
     "3.c": BugHeterogeneity.NOT_APPLICABLE,
+    "3.d": BugHeterogeneity.DONT_KNOW,
 }
+
+# Load categorized issues from result tuple files
+import re
+
+categorized_issues = []
+result_files = glob.glob('/Users/bubblepipe/repo/gpu-bugs/llm_categorizations_8a083eed/results.tuples.*')
+
+for file in result_files:
+    with open(file, 'r') as f:
+        content = f.read().strip()
+        if content:
+            try:
+                # Replace enum representations with actual enum objects
+                content = re.sub(r"<(Bug\w+\.\w+): '[^']*'>", r"\1", content)
+                
+                # Now eval the cleaned content
+                tuples = eval(content)
+                categorized_issues.extend(tuples)
+            except Exception as e:
+                print(f"Error parsing tuples from file {file}: {e}")
 
 def parse_bug_type(code):
     return BUG_TYPE_LOOKUP.get(code)
@@ -149,6 +169,11 @@ The url to the issue is:
 
 def parse_llm_output(text):
     xs = [x.strip() for x in text.split(',')]
+    if (len(xs) != 3 or
+        xs[0] not in BUG_TYPE_LOOKUP or
+        xs[1] not in BUG_SYMPTOM_LOOKUP or
+        xs[2] not in BUG_HETEROGENEITY_LOOKUP):
+        raise ValueError(f"Invalid output format: {text}")
     return (parse_bug_type(xs[0]), parse_bug_symptom(xs[1]), parse_bug_heterogeneity(xs[2]))
 
 def ask_gemini_2_5_flash(issue):
@@ -204,18 +229,31 @@ def ask_opus_4(issue):
 
 issues_categorized = []
 
+# Create a set of URLs that are already categorized for fast lookup
+categorized_urls = {issue[1] for issue in categorized_issues}
+
 for issues in issue_groups:
-    selected_issues = random.sample(issues, min(10, len(issues)))    
-    # Print title and URL
-    for issue in selected_issues:
-        title = issue['title']
-        url = issue['html_url']
-        print(f"{title} \n{url}")
-        result = ask_gemini_2_5_flash(issue)
-        issues_categorized.append( (title, url, result[0], result[1], result[2] ) )
-        for line in list(result):
-            print(" - " + line.value)
-        print()
+    # Find issues that haven't been categorized yet
+    uncategorized_issues = [issue for issue in issues if issue['html_url'] not in categorized_urls]
+    
+    # Select up to 10 unique issues that haven't been categorized
+    num_to_select = min(10, len(uncategorized_issues))
+    if num_to_select > 0:
+        selected_issues = random.sample(uncategorized_issues, num_to_select)
+        
+        # Print title and URL
+        for issue in selected_issues:
+            title = issue['title']
+            url = issue['html_url']
+            print(f"{title} \n{url}")
+            result = ask_gemini_2_5_flash(issue)
+            issues_categorized.append( (title, url, result[0], result[1], result[2] ) )
+            for line in list(result):
+                print(" - " + line.value)
+            print()
+    else:
+        print(f"All issues in this group have already been categorized")
+    
     print("\n\n=========================\n\n")
     
 print()
