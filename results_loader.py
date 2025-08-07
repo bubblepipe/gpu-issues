@@ -3,7 +3,7 @@
 import glob
 import re
 import sys
-from cates import BugType, BugSymptom, BugHeterogeneity
+from cates import IsReallyBug, UserPerspective, DeveloperPerspective, AcceleratorSpecific
 
 
 def load_categorized_results(pattern):
@@ -14,7 +14,7 @@ def load_categorized_results(pattern):
         pattern: Glob pattern for finding result files
         
     Returns:
-        List of tuples containing (title, url, bug_type, bug_symptom, bug_heterogeneity)
+        List of tuples containing (title, url, is_really_bug, user_perspective, developer_perspective, accelerator_specific)
     """
     categorized_issues = []
     result_files = glob.glob(pattern)
@@ -25,7 +25,7 @@ def load_categorized_results(pattern):
             if content:
                 try:
                     # Replace enum representations with actual enum objects
-                    content = re.sub(r"<(Bug\w+\.\w+): '[^']*'>", r"\1", content)
+                    content = re.sub(r"<((?:IsReallyBug|UserPerspective|DeveloperPerspective|AcceleratorSpecific)\.\w+): '[^']*'>", r"\1", content)
                     
                     # Now eval the cleaned content
                     # This is safe because we control the file format

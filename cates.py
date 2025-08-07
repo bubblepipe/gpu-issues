@@ -3,58 +3,80 @@
 from enum import Enum
 
 
-class BugType(Enum):
-    NOT_A_BUG = "1.a not a bug"
-    SOURCE_CODE_ISSUE = "1.b source code issue"
-    LOW_LEVEL_SOFTWARE_STACK = "1.c low-level software stack, like GPU driver, CUDA toolchain, or even hardware bugs"
-    WRONG_API_USAGE = "1.d user called the wrong api"
-    OTHER = "1.e other"
+class IsReallyBug(Enum):
+    NO = "1.a no"
+    SORT_OF_NO = "1.b sort of no, working as designed, but design is problematic"
+    USER_MISINTERPRET = "1.c sort of yes, but user misinterpret the api"
+    DEFINITELY_YES = "1.d really yes, definitely a bug"
 
 
-class BugSymptom(Enum):
-    NOT_ABLE_TO_COMPILE = "2.a not able to compile"
-    CRASHES_DURING_RUNTIME = "2.b crashes during runtime"
-    PRODUCES_WRONG_RESULT = "2.c produces wrong result"
-    UNEXPECTED_RUNTIME_DURATION = "2.d unexpected runtime duration"
-    UNEXPECTED_MEMORY_USAGE = "2.e unexpected amount of consumed memory"
-    OTHER = "2.f other"
-    NOT_A_BUG = "2.g not a bug"
+class UserPerspective(Enum):
+    COMPILATION_BUILD = "2.a Compilation and build system"
+    TYPE_SHAPE_INFERENCE = "2.b type system and shape inference bugs"
+    ACCELERATOR_BACKEND = "2.c accelerator and backend fragmentation"
+    DISTRIBUTION_SYNC = "2.d distribution and synchronization bugs"
+    NUMERICAL_PRECISION = "2.e numerical precision issues"
+    PERFORMANCE_REGRESSION = "2.f performance regression, unreasonable duration"
+    RESOURCE_EXHAUSTION = "2.g resource exhaustion (memory, file handles, threads)"
+    API_INTEGRATION = "2.h api / integration issues"
+    OTHER = "2.i other"
+    NOT_A_BUG = "2.j not a bug, not applicable"
 
 
-class BugHeterogeneity(Enum):
-    UNIVERSAL = "3.a no, universal"
-    BACKEND_SPECIFIC = "3.b yes, some backend specifically"
-    NOT_APPLICABLE = "3.c not applicable"
-    DONT_KNOW = "3.d dont know"
+class DeveloperPerspective(Enum):
+    ARCHITECTURAL_REFACTORING = "3.a architectural refactoring"
+    ADDING_CHECKS = "3.b adding checks, bounds validation, error handling"
+    ALGORITHM_OPTIMIZATION = "3.c algorithm optimization"
+    RACE_CONDITIONS = "3.d addressing race conditions and distributed execution"
+    RECONFIGURE_ENVIRONMENT = "3.e reconfigure environment (cuda library, gpu driver)"
+    WONT_FIX_CONSTRAINT = "3.h won't fix, due to man hour constraint or priority"
+    WONT_FIX_FUNDAMENTAL = "3.j won't fix, fundamentally not fixable (closed source)"
+    NOT_A_BUG = "3.k not a bug, not applicable"
 
 
-# Legacy alias for backward compatibility
-BugUniversality = BugHeterogeneity
+class AcceleratorSpecific(Enum):
+    YES = "4.a yes"
+    NO = "4.b no"
+    DONT_KNOW = "4.c don't know"
+    NOT_A_BUG = "4.d not a bug, not applicable"
 
 
-BUG_TYPE_LOOKUP = {
-    "1.a": BugType.NOT_A_BUG,
-    "1.b": BugType.SOURCE_CODE_ISSUE,
-    "1.c": BugType.LOW_LEVEL_SOFTWARE_STACK,
-    "1.d": BugType.WRONG_API_USAGE,
-    "1.e": BugType.OTHER,
+IS_REALLY_BUG_LOOKUP = {
+    "1.a": IsReallyBug.NO,
+    "1.b": IsReallyBug.SORT_OF_NO,
+    "1.c": IsReallyBug.USER_MISINTERPRET,
+    "1.d": IsReallyBug.DEFINITELY_YES,
 }
 
 
-BUG_SYMPTOM_LOOKUP = {
-    "2.a": BugSymptom.NOT_ABLE_TO_COMPILE,
-    "2.b": BugSymptom.CRASHES_DURING_RUNTIME,
-    "2.c": BugSymptom.PRODUCES_WRONG_RESULT,
-    "2.d": BugSymptom.UNEXPECTED_RUNTIME_DURATION,
-    "2.e": BugSymptom.UNEXPECTED_MEMORY_USAGE,
-    "2.f": BugSymptom.OTHER,
-    "2.g": BugSymptom.NOT_A_BUG,
+USER_PERSPECTIVE_LOOKUP = {
+    "2.a": UserPerspective.COMPILATION_BUILD,
+    "2.b": UserPerspective.TYPE_SHAPE_INFERENCE,
+    "2.c": UserPerspective.ACCELERATOR_BACKEND,
+    "2.d": UserPerspective.DISTRIBUTION_SYNC,
+    "2.e": UserPerspective.NUMERICAL_PRECISION,
+    "2.f": UserPerspective.PERFORMANCE_REGRESSION,
+    "2.g": UserPerspective.RESOURCE_EXHAUSTION,
+    "2.h": UserPerspective.API_INTEGRATION,
+    "2.i": UserPerspective.OTHER,
+    "2.j": UserPerspective.NOT_A_BUG,
 }
 
 
-BUG_HETEROGENEITY_LOOKUP = {
-    "3.a": BugHeterogeneity.UNIVERSAL,
-    "3.b": BugHeterogeneity.BACKEND_SPECIFIC,
-    "3.c": BugHeterogeneity.NOT_APPLICABLE,
-    "3.d": BugHeterogeneity.DONT_KNOW,
+DEVELOPER_PERSPECTIVE_LOOKUP = {
+    "3.a": DeveloperPerspective.ARCHITECTURAL_REFACTORING,
+    "3.b": DeveloperPerspective.ADDING_CHECKS,
+    "3.c": DeveloperPerspective.ALGORITHM_OPTIMIZATION,
+    "3.d": DeveloperPerspective.RACE_CONDITIONS,
+    "3.e": DeveloperPerspective.RECONFIGURE_ENVIRONMENT,
+    "3.h": DeveloperPerspective.WONT_FIX_CONSTRAINT,
+    "3.j": DeveloperPerspective.WONT_FIX_FUNDAMENTAL,
+    "3.k": DeveloperPerspective.NOT_A_BUG,
+}
+
+ACCELERATOR_SPECIFIC_LOOKUP = {
+    "4.a": AcceleratorSpecific.YES,
+    "4.b": AcceleratorSpecific.NO,
+    "4.c": AcceleratorSpecific.DONT_KNOW,
+    "4.d": AcceleratorSpecific.NOT_A_BUG,
 }

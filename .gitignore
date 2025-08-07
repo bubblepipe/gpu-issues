@@ -62,3 +62,5 @@ temp/
 *.key
 *.pem
 secrets/
+
+flake.lock

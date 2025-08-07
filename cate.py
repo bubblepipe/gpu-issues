@@ -3,10 +3,50 @@ import random
 import requests
 import os
 import sys
+import time
 from result import Ok, Err, Result
 from prompts import BUG_CATEGORIZATION_PROMPT
-from cates import BUG_TYPE_LOOKUP, BUG_SYMPTOM_LOOKUP, BUG_HETEROGENEITY_LOOKUP
+from cates import IS_REALLY_BUG_LOOKUP, USER_PERSPECTIVE_LOOKUP, DEVELOPER_PERSPECTIVE_LOOKUP, ACCELERATOR_SPECIFIC_LOOKUP
 from results_loader import load_categorized_results, get_categorized_urls
+
+def fetch_issue_comments(issue_url):
+    """Fetch comments for a GitHub issue."""
+    # Extract owner, repo, and issue number from URL
+    # Example: https://github.com/pytorch/pytorch/issues/12345
+    parts = issue_url.replace('https://github.com/', '').split('/')
+    if len(parts) < 4 or parts[2] != 'issues':
+        return []
+    
+    owner = parts[0]
+    repo = parts[1]
+    issue_number = parts[3]
+    
+    # Construct API URL for comments
+    api_url = f"https://api.github.com/repos/{owner}/{repo}/issues/{issue_number}/comments"
+    
+    headers = {
+        'Accept': 'application/vnd.github.v3+json',
+    }
+    
+    # Add GitHub token if available
+    github_token = os.getenv('GITHUB_TOKEN')
+    if github_token:
+        headers['Authorization'] = f'token {github_token}'
+    
+    try:
+        response = requests.get(api_url, headers=headers)
+        
+        # Handle rate limiting
+        if response.status_code == 403:
+            print(f"Rate limited when fetching comments. Waiting...")
+            time.sleep(60)
+            return []
+        
+        response.raise_for_status()
+        return response.json()
+    except Exception as e:
+        print(f"Error fetching comments: {e}")
+        return []
 
 def print_issue(issue):
     """Pretty print a single issue in markdown format."""
@@ -34,6 +74,24 @@ def print_issue(issue):
         print("> " + body.replace('\n', '\n> '))
     else:
         print("**Content:** _(empty)_")
+    
+    # Print comments if available
+    if 'comments_data' in issue and issue['comments_data']:
+        print()
+        print(f"**Comments ({len(issue['comments_data'])}):**")
+        print()
+        for i, comment in enumerate(issue['comments_data'], 1):
+            print(f"#### Comment {i} by {comment.get('user', {}).get('login', 'Unknown')} at {comment.get('created_at', 'Unknown')}")
+            print()
+            if comment.get('body'):
+                print("> " + comment['body'].replace('\n', '\n> '))
+            else:
+                print("> _(empty comment)_")
+            print()
+    elif 'comments' in issue and issue['comments'] > 0:
+        # Comments count is available but actual comments not fetched
+        print()
+        print(f"**Comments:** {issue['comments']} comments available (not fetched)")
     
     print()
     print("---")
@@ -66,31 +124,37 @@ for issues in issue_groups:
 # Load categorized issues from result tuple files
 categorized_issues = load_categorized_results('/Users/bubblepipe/repo/gpu-bugs/llm_categorizations_a81e1dd0/results.tuples.*')
 
-def parse_bug_type(code):
-    return BUG_TYPE_LOOKUP.get(code)
+def parse_is_really_bug(code):
+    return IS_REALLY_BUG_LOOKUP.get(code)
 
-def parse_bug_symptom(code):
-    return BUG_SYMPTOM_LOOKUP.get(code)
+def parse_user_perspective(code):
+    return USER_PERSPECTIVE_LOOKUP.get(code)
 
-def parse_bug_heterogeneity(code):
-    return BUG_HETEROGENEITY_LOOKUP.get(code)
+def parse_developer_perspective(code):
+    return DEVELOPER_PERSPECTIVE_LOOKUP.get(code)
+
+def parse_accelerator_specific(code):
+    return ACCELERATOR_SPECIFIC_LOOKUP.get(code)
 
 
 def parse_llm_output(text):
     xs = [x.strip() for x in text.split(',')]
-    if len(xs) != 3:
-        return Err(f"Expected 3 comma-separated values, got {len(xs)}. Original response: {text}")
+    if len(xs) != 4:
+        return Err(f"Expected 4 comma-separated values, got {len(xs)}. Original response: {text}")
     
-    if xs[0] not in BUG_TYPE_LOOKUP:
-        return Err(f"Invalid bug type code: {xs[0]}. Original response: {text}")
+    if xs[0] not in IS_REALLY_BUG_LOOKUP:
+        return Err(f"Invalid is_really_bug code: {xs[0]}. Original response: {text}")
     
-    if xs[1] not in BUG_SYMPTOM_LOOKUP:
-        return Err(f"Invalid bug symptom code: {xs[1]}. Original response: {text}")
+    if xs[1] not in USER_PERSPECTIVE_LOOKUP:
+        return Err(f"Invalid user_perspective code: {xs[1]}. Original response: {text}")
     
-    if xs[2] not in BUG_HETEROGENEITY_LOOKUP:
-        return Err(f"Invalid bug heterogeneity code: {xs[2]}. Original response: {text}")
+    if xs[2] not in DEVELOPER_PERSPECTIVE_LOOKUP:
+        return Err(f"Invalid developer_perspective code: {xs[2]}. Original response: {text}")
     
-    return Ok((parse_bug_type(xs[0]), parse_bug_symptom(xs[1]), parse_bug_heterogeneity(xs[2])))
+    if xs[3] not in ACCELERATOR_SPECIFIC_LOOKUP:
+        return Err(f"Invalid accelerator_specific code: {xs[3]}. Original response: {text}")
+    
+    return Ok((parse_is_really_bug(xs[0]), parse_user_perspective(xs[1]), parse_developer_perspective(xs[2]), parse_accelerator_specific(xs[3])))
 
 def ask_gemini_2_5_flash(issue):
     api_key = os.getenv("GEMINI_API_KEY")
@@ -184,14 +248,17 @@ for issues in issue_groups:
     # Find issues that haven't been categorized yet
     uncategorized_issues = [issue for issue in issues if issue['html_url'] not in categorized_urls]
     
-    num_to_select = min(20, len(uncategorized_issues))
+    num_to_select = min(30, len(uncategorized_issues))
     if num_to_select > 0:
         selected_issues = random.sample(uncategorized_issues, num_to_select)
         
         # Print title and URL
         for issue in selected_issues:
-            print_issue(issue)
-            exit()
+            # Fetch comments for this issue
+            comments = fetch_issue_comments(issue['html_url'])
+            issue['comments_data'] = comments
+            # print_issue(issue)
+            # exit()
             title = issue['title']
             url = issue['html_url']
             print(f"{title} \n{url}")
@@ -205,7 +272,7 @@ for issues in issue_groups:
             
             # Unwrap the successful result
             categorization = result.unwrap()
-            issues_categorized.append( (title, url, categorization[0], categorization[1], categorization[2] ) )
+            issues_categorized.append( (title, url, categorization[0], categorization[1], categorization[2], categorization[3] ) )
             for item in categorization:
                 print(" - " + item.value)
             print()
@@ -215,5 +282,27 @@ for issues in issue_groups:
     
     print("\n\n=========================\n\n")
     
-print()
-print(issues_categorized)
+# Save categorized issues to a file
+if issues_categorized:
+    import datetime
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    output_filename = f"categorized_issues_{timestamp}.json"
+    
+    # Convert enum objects to strings for JSON serialization
+    json_data = []
+    for item in issues_categorized:
+        json_data.append({
+            "title": item[0],
+            "url": item[1],
+            "is_really_bug": item[2].value if item[2] else None,
+            "user_perspective": item[3].value if item[3] else None,
+            "developer_perspective": item[4].value if item[4] else None,
+            "accelerator_specific": item[5].value if item[5] else None
+        })
+    
+    with open(output_filename, 'w') as f:
+        json.dump(json_data, f, indent=2)
+    
+    print(f"\nSaved {len(issues_categorized)} categorized issues to {output_filename}")
+else:
+    print("\nNo new issues were categorized.")
