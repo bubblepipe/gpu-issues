@@ -9,6 +9,52 @@ from prompts import BUG_CATEGORIZATION_PROMPT
 from cates import IS_REALLY_BUG_LOOKUP, USER_PERSPECTIVE_LOOKUP, DEVELOPER_PERSPECTIVE_LOOKUP, ACCELERATOR_SPECIFIC_LOOKUP
 from results_loader import load_categorized_results, get_categorized_urls
 
+def load_issues_from_categorized_file(categorized_file_path, issue_groups):
+    """Load issues from a previously categorized JSON file."""
+    try:
+        with open(categorized_file_path, 'r') as f:
+            categorized_data = json.load(f)
+        
+        # Extract URLs from categorized data
+        all_selected_issues = []
+        for item in categorized_data:
+            # Find the original issue from issue_groups
+            found = False
+            for issues in issue_groups:
+                for issue in issues:
+                    if issue['html_url'] == item['url']:
+                        all_selected_issues.append(issue)
+                        found = True
+                        break
+                if found:
+                    break
+        
+        print(f"Loaded {len(all_selected_issues)} issues from {categorized_file_path}")
+        return all_selected_issues
+    except FileNotFoundError:
+        print(f"File not found: {categorized_file_path}")
+        return []
+    except json.JSONDecodeError:
+        print(f"Error decoding JSON from: {categorized_file_path}")
+        return []
+
+def select_random_uncategorized_issues(issue_groups, categorized_urls, num_per_framework=30):
+    """Select random uncategorized issues from each framework."""
+    all_selected_issues = []
+    for issues in issue_groups:
+        # Find issues that haven't been categorized yet
+        uncategorized_issues = [issue for issue in issues if issue['html_url'] not in categorized_urls]
+        
+        num_to_select = min(num_per_framework, len(uncategorized_issues))
+        if num_to_select > 0:
+            selected_issues = random.sample(uncategorized_issues, num_to_select)
+            all_selected_issues.extend(selected_issues)
+            print(f"Selected {num_to_select} uncategorized issues from framework")
+        else:
+            print(f"All issues in this framework have already been categorized")
+    
+    return all_selected_issues
+
 def fetch_issue_comments(issue_url):
     """Fetch comments for a GitHub issue."""
     # Extract owner, repo, and issue number from URL
@@ -244,44 +290,50 @@ issues_categorized = []
 # Create a set of URLs that are already categorized for fast lookup
 categorized_urls = get_categorized_urls(categorized_issues)
 
-for issues in issue_groups:
-    # Find issues that haven't been categorized yet
-    uncategorized_issues = [issue for issue in issues if issue['html_url'] not in categorized_urls]
+# Choose source for issues: either from fresh selection or from previously categorized file
+USE_CATEGORIZED_FILE = True  # Set to False to select fresh issues
+
+all_selected_issues = []
+if USE_CATEGORIZED_FILE:
+    # Load issues from previously categorized file
+    categorized_file_path = '/Users/bubblepipe/repo/gpu-bugs/categorized/categorized_issues_20250808_041918.json'
+    all_selected_issues = load_issues_from_categorized_file(categorized_file_path, issue_groups)
+else:
+    # Select random uncategorized issues
+    all_selected_issues = select_random_uncategorized_issues(issue_groups, categorized_urls, num_per_framework=30)
+
+print(f"\nTotal issues selected: {len(all_selected_issues)}")
+print("\n\n=========================\n\n")
+
+
+for issue in all_selected_issues:
+    # Fetch comments for this issue
+    comments = fetch_issue_comments(issue['html_url'])
+    issue['comments_data'] = comments
+    # print_issue(issue)
+    # exit()
     
-    num_to_select = min(30, len(uncategorized_issues))
-    if num_to_select > 0:
-        selected_issues = random.sample(uncategorized_issues, num_to_select)
-        
-        # Print title and URL
-        for issue in selected_issues:
-            # Fetch comments for this issue
-            comments = fetch_issue_comments(issue['html_url'])
-            issue['comments_data'] = comments
-            # print_issue(issue)
-            # exit()
-            title = issue['title']
-            url = issue['html_url']
-            print(f"{title} \n{url}")
-            result = ask_gemini_2_5_flash(issue)
-            if result.is_err():
-                error_msg = result.unwrap_err()
-                sys.stderr.write(f"Failed to categorize: {title} - {url}\n")
-                sys.stderr.write(f"Error: {error_msg}\n")
-                print()
-                continue
-            
-            # Unwrap the successful result
-            categorization = result.unwrap()
-            issues_categorized.append( (title, url, categorization[0], categorization[1], categorization[2], categorization[3] ) )
-            for item in categorization:
-                print(" - " + item.value)
-            print()
-            # exit()
-    else:
-        print(f"All issues in this group have already been categorized")
+    title = issue['title']
+    url = issue['html_url']
+    print(f"{title} \n{url}")
     
-    print("\n\n=========================\n\n")
+    result = ask_gemini_2_5_flash(issue)
+    if result.is_err():
+        error_msg = result.unwrap_err()
+        sys.stderr.write(f"Failed to categorize: {title} - {url}\n")
+        sys.stderr.write(f"Error: {error_msg}\n")
+        print()
+        continue
     
+    # Unwrap the successful result
+    categorization = result.unwrap()
+    issues_categorized.append( (title, url, categorization[0], categorization[1], categorization[2], categorization[3] ) )
+    for item in categorization:
+        print(" - " + item.value)
+    print()
+    exit()
+    
+
 # Save categorized issues to a file
 if issues_categorized:
     import datetime
