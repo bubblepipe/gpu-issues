@@ -190,6 +190,8 @@ for issues in issue_groups:
         
         # Print title and URL
         for issue in selected_issues:
+            print_issue(issue)
+            exit()
             title = issue['title']
             url = issue['html_url']
             print(f"{title} \n{url}")
