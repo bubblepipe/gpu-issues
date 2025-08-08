@@ -167,8 +167,9 @@ for issues in issue_groups:
 
 
 
-# Load categorized issues from result tuple files
-categorized_issues = load_categorized_results('/Users/bubblepipe/repo/gpu-bugs/llm_categorizations_a81e1dd0/results.tuples.*')
+# Load categorized issues from JSON files
+# Update the pattern to match your JSON files location
+categorized_issues = load_categorized_results('/Users/bubblepipe/repo/gpu-bugs/categorized_issues_*.json')
 
 def parse_is_really_bug(code):
     return IS_REALLY_BUG_LOOKUP.get(code)
@@ -240,6 +241,72 @@ def ask_gemini_2_5_flash(issue):
     except Exception as e:
         return Err(f"Unexpected error with Gemini API: {e}")
 
+
+def ask_local_ollama(issue):
+    """Query local Ollama API with full issue content including comments."""
+    ollama_url = "http://localhost:11434/api/generate"
+    model = os.getenv("OLLAMA_MODEL", "llama3.2")  # Default to llama3.2 if not specified
+    
+    # Build the full issue content including body and comments
+    issue_content = f"Title: {issue['title']}\n"
+    issue_content += f"URL: {issue['html_url']}\n"
+    
+    # Add labels
+    labels = [label['name'] for label in issue.get('labels', [])]
+    if labels:
+        issue_content += f"Labels: {', '.join(labels)}\n"
+    
+    issue_content += "\nIssue Description:\n"
+    if issue.get('body'):
+        issue_content += issue['body'] + "\n"
+    else:
+        issue_content += "(No description provided)\n"
+    
+    # Add comments if available
+    if 'comments_data' in issue and issue['comments_data']:
+        issue_content += f"\n--- Comments ({len(issue['comments_data'])}) ---\n"
+        for i, comment in enumerate(issue['comments_data'], 1):
+            issue_content += f"\nComment {i} by {comment.get('user', {}).get('login', 'Unknown')} at {comment.get('created_at', 'Unknown')}:\n"
+            if comment.get('body'):
+                issue_content += comment['body'] + "\n"
+            else:
+                issue_content += "(Empty comment)\n"
+    
+    # Combine prompt with issue content
+    full_prompt = BUG_CATEGORIZATION_PROMPT + "\n\nISSUE CONTENT:\n" + issue_content
+    
+    data = {
+        "model": model,
+        "prompt": full_prompt,
+        "stream": False,
+        "options": {
+            "temperature": 0.1,  # Low temperature for consistent categorization
+            "num_predict": 50    # We only need a short response like "1.d, 2.c, 3.b, 4.a"
+        }
+    }
+    
+    try:
+        response = requests.post(ollama_url, json=data, timeout=30)
+        response.raise_for_status()
+        
+        json_response = response.json()
+        text = json_response.get('response', '').strip()
+        
+        # Parse the LLM output and return the Result
+        return parse_llm_output(text)
+        
+    except requests.exceptions.ConnectionError:
+        return Err(f"Cannot connect to Ollama at {ollama_url}. Make sure Ollama is running.")
+    except requests.exceptions.Timeout:
+        return Err(f"Ollama request timed out after 30 seconds")
+    except requests.exceptions.RequestException as e:
+        return Err(f"Network error calling Ollama API: {e}")
+    except (IndexError, KeyError) as e:
+        return Err(f"Error parsing response from Ollama API: {e}")
+    except ValueError as e:
+        return Err(f"Invalid JSON response from Ollama API: {e}")
+    except Exception as e:
+        return Err(f"Unexpected error with Ollama API: {e}")
 
 def ask_sonnet_4(issue):
     return None
@@ -317,7 +384,10 @@ for issue in all_selected_issues:
     url = issue['html_url']
     print(f"{title} \n{url}")
     
-    result = ask_gemini_2_5_flash(issue)
+    # Choose which LLM to use
+    # result = ask_gemini_2_5_flash(issue)
+    result = ask_local_ollama(issue)
+    # result = ask_opus_4(issue)
     if result.is_err():
         error_msg = result.unwrap_err()
         sys.stderr.write(f"Failed to categorize: {title} - {url}\n")
