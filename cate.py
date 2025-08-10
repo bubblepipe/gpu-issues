@@ -459,7 +459,7 @@ if USE_CATEGORIZED_FILE:
     all_selected_issues = load_issues_from_categorized_file(categorized_file_path, issue_groups)
 else:
     # Select random uncategorized issues
-    all_selected_issues = select_random_uncategorized_issues(issue_groups, categorized_urls, num_per_framework=1)
+    all_selected_issues = select_random_uncategorized_issues(issue_groups, categorized_urls, num_per_framework=40)
 
 print(f"\nTotal issues selected: {len(all_selected_issues)}")
 print("\n\n=========================\n\n")
