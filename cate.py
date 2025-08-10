@@ -6,8 +6,13 @@ import sys
 import time
 from result import Ok, Err, Result
 from prompts import BUG_CATEGORIZATION_PROMPT
-from cates import IS_REALLY_BUG_LOOKUP, USER_PERSPECTIVE_LOOKUP, DEVELOPER_PERSPECTIVE_LOOKUP, ACCELERATOR_SPECIFIC_LOOKUP
+from cates import IS_REALLY_BUG_LOOKUP, USER_PERSPECTIVE_LOOKUP, DEVELOPER_PERSPECTIVE_LOOKUP, ACCELERATOR_SPECIFIC_LOOKUP, USER_EXPERTISE_LOOKUP
 from results_loader import load_categorized_results, get_categorized_urls
+
+
+# Choose source for issues: either from fresh selection or from previously categorized file
+USE_CATEGORIZED_FILE = False  # Set to False to select fresh issues
+NUM_PER_FRAMEWORK = 1
 
 def load_issues_from_categorized_file(categorized_file_path, issue_groups):
     """Load issues from a previously categorized JSON file."""
@@ -38,7 +43,7 @@ def load_issues_from_categorized_file(categorized_file_path, issue_groups):
         print(f"Error decoding JSON from: {categorized_file_path}")
         return []
 
-def select_random_uncategorized_issues(issue_groups, categorized_urls, num_per_framework=30):
+def select_random_uncategorized_issues(issue_groups, categorized_urls, num_per_framework=NUM_PER_FRAMEWORK):
     """Select random uncategorized issues from each framework."""
     all_selected_issues = []
     for issues in issue_groups:
@@ -183,11 +188,23 @@ def parse_developer_perspective(code):
 def parse_accelerator_specific(code):
     return ACCELERATOR_SPECIFIC_LOOKUP.get(code)
 
+def parse_user_expertise(code):
+    return USER_EXPERTISE_LOOKUP.get(code)
+
 
 def parse_llm_output(text):
-    xs = [x.strip() for x in text.split(',')]
-    if len(xs) != 4:
-        return Err(f"Expected 4 comma-separated values, got {len(xs)}. Original response: {text}")
+    # Try to find pattern like "1.x, 2.x, 3.x, 4.x, 5.x" anywhere in the text
+    import re
+    pattern = r'([1-5]\.[a-l]),\s*([1-5]\.[a-l]),\s*([1-5]\.[a-l]),\s*([1-5]\.[a-l]),\s*([1-5]\.[a-l])'
+    match = re.search(pattern, text)
+    
+    if match:
+        xs = list(match.groups())
+    else:
+        # Fallback to original parsing
+        xs = [x.strip() for x in text.split(',')]
+        if len(xs) != 5:
+            return Err(f"Expected 5 comma-separated values, got {len(xs)}. Original response: {text[:200]}...")
     
     if xs[0] not in IS_REALLY_BUG_LOOKUP:
         return Err(f"Invalid is_really_bug code: {xs[0]}. Original response: {text}")
@@ -201,7 +218,10 @@ def parse_llm_output(text):
     if xs[3] not in ACCELERATOR_SPECIFIC_LOOKUP:
         return Err(f"Invalid accelerator_specific code: {xs[3]}. Original response: {text}")
     
-    return Ok((parse_is_really_bug(xs[0]), parse_user_perspective(xs[1]), parse_developer_perspective(xs[2]), parse_accelerator_specific(xs[3])))
+    if xs[4] not in USER_EXPERTISE_LOOKUP:
+        return Err(f"Invalid user_expertise code: {xs[4]}. Original response: {text}")
+    
+    return Ok((parse_is_really_bug(xs[0]), parse_user_perspective(xs[1]), parse_developer_perspective(xs[2]), parse_accelerator_specific(xs[3]), parse_user_expertise(xs[4])))
 
 def ask_gemini_2_5_flash(issue):
     api_key = os.getenv("GEMINI_API_KEY")
@@ -243,9 +263,12 @@ def ask_gemini_2_5_flash(issue):
 
 
 def ask_local_ollama(issue):
-    """Query local Ollama API with full issue content including comments."""
+    """Query Ollama API on remote h100 server with full issue content including comments."""
+    import subprocess
+    import json as json_module
+    
     ollama_url = "http://localhost:11434/api/generate"
-    model = os.getenv("OLLAMA_MODEL", "llama3.2")  # Default to llama3.2 if not specified
+    model = "qwen3:235b"
     
     # Build the full issue content including body and comments
     issue_content = f"Title: {issue['title']}\n"
@@ -275,38 +298,108 @@ def ask_local_ollama(issue):
     # Combine prompt with issue content
     full_prompt = BUG_CATEGORIZATION_PROMPT + "\n\nISSUE CONTENT:\n" + issue_content
     
+    # Prepare JSON data for curl
     data = {
         "model": model,
         "prompt": full_prompt,
         "stream": False,
         "options": {
             "temperature": 0.1,  # Low temperature for consistent categorization
-            "num_predict": 50    # We only need a short response like "1.d, 2.c, 3.b, 4.a"
+            "num_predict": 30,   # We need a slightly longer response like "1.d, 2.c, 3.b, 4.a, 5.b"
+            "num_ctx": 4096,     # Limit context window to speed up processing
+            "repeat_penalty": 1.0
         }
     }
     
+    # Convert data to JSON string
+    json_data = json_module.dumps(data)
+    
+    # Create a local temporary file
+    import tempfile
+    import uuid
+    
+    # Write JSON to local temp file
+    local_temp = tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False)
+    local_temp.write(json_data)
+    local_temp.close()
+    
+    # Remote temp filename
+    remote_temp = f"/tmp/ollama_request_{uuid.uuid4().hex}.json"
+    
+    # Build the SSH + SCP + curl command
+    # First copy the file to remote, then use it with curl, then clean up both files
+    ssh_command = f"""
+    scp {local_temp.name} h100:{remote_temp} && \
+    ssh h100 'curl -s -X POST {ollama_url} -H "Content-Type: application/json" -d @{remote_temp} --max-time 120; rm -f {remote_temp}' && \
+    rm -f {local_temp.name}
+    """
+    
     try:
-        response = requests.post(ollama_url, json=data, timeout=30)
-        response.raise_for_status()
+        # Print debug info
+        print(f"Sending request to Ollama for: {issue.get('title', 'Unknown')[:50]}...")
         
-        json_response = response.json()
+        # Print the command for debugging
+        print(f"DEBUG: SSH Command:\n{ssh_command}\n")
+        print(f"DEBUG: Local temp file: {local_temp.name}")
+        print(f"DEBUG: Remote temp file: {remote_temp}")
+        
+        # Execute SSH command (use shell=True for complex command with pipes)
+        result = subprocess.run(
+            ssh_command,
+            shell=True,
+            capture_output=True,
+            text=True,
+            timeout=130  # Increased timeout for large model
+        )
+        
+        if result.returncode != 0:
+            return Err(f"SSH/curl command failed: {result.stdout} \n{result.stderr}")
+        
+        # Debug output
+        if not result.stdout:
+            return Err(f"Empty response from Ollama. stderr: {result.stderr}")
+        
+        # Parse the JSON response
+        try:
+            json_response = json_module.loads(result.stdout)
+        except json_module.JSONDecodeError as e:
+            return Err(f"Failed to parse JSON. Response: {result.stdout[:500]}... Error: {e}")
         text = json_response.get('response', '').strip()
+        
+        # Debug: print the raw response
+        print(f"DEBUG: Raw Ollama response: {text[:200]}...")
         
         # Parse the LLM output and return the Result
         return parse_llm_output(text)
         
-    except requests.exceptions.ConnectionError:
-        return Err(f"Cannot connect to Ollama at {ollama_url}. Make sure Ollama is running.")
-    except requests.exceptions.Timeout:
-        return Err(f"Ollama request timed out after 30 seconds")
-    except requests.exceptions.RequestException as e:
-        return Err(f"Network error calling Ollama API: {e}")
-    except (IndexError, KeyError) as e:
-        return Err(f"Error parsing response from Ollama API: {e}")
-    except ValueError as e:
-        return Err(f"Invalid JSON response from Ollama API: {e}")
+    except subprocess.TimeoutExpired:
+        # Clean up local temp file
+        try:
+            os.unlink(local_temp.name)
+        except:
+            pass
+        return Err(f"SSH command timed out after 130 seconds - Ollama may be overloaded or the model is too slow")
+    except json_module.JSONDecodeError as e:
+        # Clean up local temp file
+        try:
+            os.unlink(local_temp.name)
+        except:
+            pass
+        return Err(f"Invalid JSON response from Ollama API: {e}. Response: {result.stdout if 'result' in locals() else 'No response'}")
+    except subprocess.SubprocessError as e:
+        # Clean up local temp file
+        try:
+            os.unlink(local_temp.name)
+        except:
+            pass
+        return Err(f"SSH subprocess error: {e}")
     except Exception as e:
-        return Err(f"Unexpected error with Ollama API: {e}")
+        # Clean up local temp file
+        try:
+            os.unlink(local_temp.name)
+        except:
+            pass
+        return Err(f"Unexpected error with remote Ollama API: {e}")
 
 def ask_sonnet_4(issue):
     return None
@@ -357,8 +450,7 @@ issues_categorized = []
 # Create a set of URLs that are already categorized for fast lookup
 categorized_urls = get_categorized_urls(categorized_issues)
 
-# Choose source for issues: either from fresh selection or from previously categorized file
-USE_CATEGORIZED_FILE = True  # Set to False to select fresh issues
+
 
 all_selected_issues = []
 if USE_CATEGORIZED_FILE:
@@ -367,7 +459,7 @@ if USE_CATEGORIZED_FILE:
     all_selected_issues = load_issues_from_categorized_file(categorized_file_path, issue_groups)
 else:
     # Select random uncategorized issues
-    all_selected_issues = select_random_uncategorized_issues(issue_groups, categorized_urls, num_per_framework=30)
+    all_selected_issues = select_random_uncategorized_issues(issue_groups, categorized_urls, num_per_framework=1)
 
 print(f"\nTotal issues selected: {len(all_selected_issues)}")
 print("\n\n=========================\n\n")
@@ -385,23 +477,24 @@ for issue in all_selected_issues:
     print(f"{title} \n{url}")
     
     # Choose which LLM to use
-    # result = ask_gemini_2_5_flash(issue)
-    result = ask_local_ollama(issue)
+    result = ask_gemini_2_5_flash(issue)
+    # result = ask_local_ollama(issue)
     # result = ask_opus_4(issue)
     if result.is_err():
         error_msg = result.unwrap_err()
         sys.stderr.write(f"Failed to categorize: {title} - {url}\n")
         sys.stderr.write(f"Error: {error_msg}\n")
         print()
+        # exit()
         continue
     
     # Unwrap the successful result
     categorization = result.unwrap()
-    issues_categorized.append( (title, url, categorization[0], categorization[1], categorization[2], categorization[3] ) )
+    issues_categorized.append( (title, url, categorization[0], categorization[1], categorization[2], categorization[3], categorization[4] ) )
     for item in categorization:
         print(" - " + item.value)
     print()
-    exit()
+    # exit()
     
 
 # Save categorized issues to a file
@@ -419,7 +512,8 @@ if issues_categorized:
             "is_really_bug": item[2].value if item[2] else None,
             "user_perspective": item[3].value if item[3] else None,
             "developer_perspective": item[4].value if item[4] else None,
-            "accelerator_specific": item[5].value if item[5] else None
+            "accelerator_specific": item[5].value if item[5] else None,
+            "user_expertise": item[6].value if item[6] else None
         })
     
     with open(output_filename, 'w') as f:

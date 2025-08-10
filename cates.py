@@ -8,6 +8,7 @@ class IsReallyBug(Enum):
     SORT_OF_NO = "1.b sort of no, working as designed, but design is problematic"
     USER_MISINTERPRET = "1.c sort of yes, but user misinterpret the api"
     DEFINITELY_YES = "1.d really yes, definitely a bug"
+    DOCUMENTATION_BUG = "1.e documentation bug"
 
 
 class UserPerspective(Enum):
@@ -19,8 +20,9 @@ class UserPerspective(Enum):
     PERFORMANCE_REGRESSION = "2.f performance regression, unreasonable duration"
     RESOURCE_EXHAUSTION = "2.g resource exhaustion (memory, file handles, threads)"
     API_INTEGRATION = "2.h api / integration issues"
-    OTHER = "2.i other"
-    NOT_A_BUG = "2.j not a bug, not applicable"
+    DETERMINISM_REPRODUCIBILITY = "2.i determinism / reproducibility issues"
+    OTHER = "2.j other"
+    NOT_A_BUG = "2.k not a bug, not applicable"
 
 
 class DeveloperPerspective(Enum):
@@ -31,14 +33,26 @@ class DeveloperPerspective(Enum):
     RECONFIGURE_ENVIRONMENT = "3.e reconfigure environment (cuda library, gpu driver)"
     WONT_FIX_CONSTRAINT = "3.h won't fix, due to man hour constraint or priority"
     WONT_FIX_FUNDAMENTAL = "3.j won't fix, fundamentally not fixable (closed source)"
-    NOT_A_BUG = "3.k not a bug, not applicable"
+    WONT_FIX_OTHER = "3.k won't fix, due to other reasons"
+    NOT_A_BUG = "3.l not a bug, not applicable"
 
 
 class AcceleratorSpecific(Enum):
-    YES = "4.a yes"
-    NO = "4.b no"
-    DONT_KNOW = "4.c don't know"
-    NOT_A_BUG = "4.d not a bug, not applicable"
+    VENDOR_SPECIFIC = "4.a yes, accelerator vendor-specific"
+    ARCHITECTURE_SPECIFIC = "4.b yes, accelerator architecture-specific"
+    OS_SPECIFIC = "4.c yes, OS-specific"
+    DRIVER_VERSION_SPECIFIC = "4.d driver version-specific"
+    ENVIRONMENT_SPECIFIC = "4.e other environmental specific configurations"
+    NO = "4.f no"
+    DONT_KNOW = "4.g don't know"
+    NOT_A_BUG = "4.h not a bug, not applicable"
+
+
+class UserExpertise(Enum):
+    BEGINNER = "5.a Beginner"
+    INTERMEDIATE = "5.b Intermediate"
+    ADVANCED = "5.c Advanced"
+    NOT_APPLICABLE = "5.d Not applicable"
 
 
 IS_REALLY_BUG_LOOKUP = {
@@ -46,6 +60,7 @@ IS_REALLY_BUG_LOOKUP = {
     "1.b": IsReallyBug.SORT_OF_NO,
     "1.c": IsReallyBug.USER_MISINTERPRET,
     "1.d": IsReallyBug.DEFINITELY_YES,
+    "1.e": IsReallyBug.DOCUMENTATION_BUG,
 }
 
 
@@ -58,8 +73,9 @@ USER_PERSPECTIVE_LOOKUP = {
     "2.f": UserPerspective.PERFORMANCE_REGRESSION,
     "2.g": UserPerspective.RESOURCE_EXHAUSTION,
     "2.h": UserPerspective.API_INTEGRATION,
-    "2.i": UserPerspective.OTHER,
-    "2.j": UserPerspective.NOT_A_BUG,
+    "2.i": UserPerspective.DETERMINISM_REPRODUCIBILITY,
+    "2.j": UserPerspective.OTHER,
+    "2.k": UserPerspective.NOT_A_BUG,
 }
 
 
@@ -71,12 +87,24 @@ DEVELOPER_PERSPECTIVE_LOOKUP = {
     "3.e": DeveloperPerspective.RECONFIGURE_ENVIRONMENT,
     "3.h": DeveloperPerspective.WONT_FIX_CONSTRAINT,
     "3.j": DeveloperPerspective.WONT_FIX_FUNDAMENTAL,
-    "3.k": DeveloperPerspective.NOT_A_BUG,
+    "3.k": DeveloperPerspective.WONT_FIX_OTHER,
+    "3.l": DeveloperPerspective.NOT_A_BUG,
 }
 
 ACCELERATOR_SPECIFIC_LOOKUP = {
-    "4.a": AcceleratorSpecific.YES,
-    "4.b": AcceleratorSpecific.NO,
-    "4.c": AcceleratorSpecific.DONT_KNOW,
-    "4.d": AcceleratorSpecific.NOT_A_BUG,
+    "4.a": AcceleratorSpecific.VENDOR_SPECIFIC,
+    "4.b": AcceleratorSpecific.ARCHITECTURE_SPECIFIC,
+    "4.c": AcceleratorSpecific.OS_SPECIFIC,
+    "4.d": AcceleratorSpecific.DRIVER_VERSION_SPECIFIC,
+    "4.e": AcceleratorSpecific.ENVIRONMENT_SPECIFIC,
+    "4.f": AcceleratorSpecific.NO,
+    "4.g": AcceleratorSpecific.DONT_KNOW,
+    "4.h": AcceleratorSpecific.NOT_A_BUG,
+}
+
+USER_EXPERTISE_LOOKUP = {
+    "5.a": UserExpertise.BEGINNER,
+    "5.b": UserExpertise.INTERMEDIATE,
+    "5.c": UserExpertise.ADVANCED,
+    "5.d": UserExpertise.NOT_APPLICABLE,
 }

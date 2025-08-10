@@ -64,3 +64,5 @@ temp/
 secrets/
 
 flake.lock
+
+bug_distributions.png

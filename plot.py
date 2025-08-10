@@ -4,15 +4,15 @@ import matplotlib.pyplot as plt
 import numpy as np
 from collections import Counter
 from results_loader import load_categorized_results
-from cates import IsReallyBug, UserPerspective, DeveloperPerspective, AcceleratorSpecific
+from cates import IsReallyBug, UserPerspective, DeveloperPerspective, AcceleratorSpecific, UserExpertise
 
 
 def plot_bug_distributions(categorized_issues, save_path=None):
     """
-    Create bar plots showing the distribution of all four categorization dimensions.
+    Create bar plots showing the distribution of all five categorization dimensions.
     
     Args:
-        categorized_issues: List of tuples (title, url, is_really_bug, user_perspective, developer_perspective, accelerator_specific)
+        categorized_issues: List of tuples (title, url, is_really_bug, user_perspective, developer_perspective, accelerator_specific, user_expertise)
         save_path: Optional path to save the figure
     """
     # Extract the categorizations
@@ -20,9 +20,10 @@ def plot_bug_distributions(categorized_issues, save_path=None):
     user_perspective = [issue[3] for issue in categorized_issues if issue[3] is not None]
     developer_perspective = [issue[4] for issue in categorized_issues if issue[4] is not None]
     accelerator_specific = [issue[5] for issue in categorized_issues if issue[5] is not None]
+    user_expertise = [issue[6] for issue in categorized_issues if issue[6] is not None]
     
-    # Create subplots
-    fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(16, 12))
+    # Create subplots - now with 6 plots (2x3 grid)
+    fig, ((ax1, ax2, ax3), (ax4, ax5, ax6)) = plt.subplots(2, 3, figsize=(20, 12))
     fig.suptitle('Distribution of GPU Bug Categorizations', fontsize=16)
     
     # Plot Is Really Bug
@@ -53,7 +54,7 @@ def plot_bug_distributions(categorized_issues, save_path=None):
     for i, v in enumerate(user_values):
         ax2.text(i, v + 0.1, str(v), ha='center', va='bottom')
     
-    # Plot Developer Perspective
+    # Plot Developer Perspective  
     dev_counts = Counter(developer_perspective)
     dev_labels = [dp.name.replace('_', ' ').title() for dp in dev_counts.keys()]
     dev_values = list(dev_counts.values())
@@ -81,6 +82,23 @@ def plot_bug_distributions(categorized_issues, save_path=None):
     for i, v in enumerate(accel_values):
         ax4.text(i, v + 0.1, str(v), ha='center', va='bottom')
     
+    # Plot User Expertise
+    expertise_counts = Counter(user_expertise)
+    expertise_labels = [ue.name.replace('_', ' ').title() for ue in expertise_counts.keys()]
+    expertise_values = list(expertise_counts.values())
+    
+    ax5.bar(expertise_labels, expertise_values, color='purple', edgecolor='black')
+    ax5.set_title('User Expertise Distribution')
+    ax5.set_ylabel('Count')
+    ax5.tick_params(axis='x', rotation=45)
+    
+    # Add value labels on bars
+    for i, v in enumerate(expertise_values):
+        ax5.text(i, v + 0.1, str(v), ha='center', va='bottom')
+    
+    # Hide the 6th subplot (we only have 5 categories)
+    ax6.axis('off')
+    
     # Adjust layout
     plt.tight_layout()
     
@@ -99,7 +117,7 @@ def plot_combined_heatmap(categorized_issues, save_path=None):
     Create a heatmap showing the co-occurrence of user perspective and developer perspective.
     
     Args:
-        categorized_issues: List of tuples (title, url, is_really_bug, user_perspective, developer_perspective, accelerator_specific)
+        categorized_issues: List of tuples (title, url, is_really_bug, user_perspective, developer_perspective, accelerator_specific, user_expertise)
         save_path: Optional path to save the figure
     """
     # Create co-occurrence matrix
@@ -189,11 +207,18 @@ def print_statistics(categorized_issues):
     for accel, count in accel_counts.most_common():
         percentage = (count / total) * 100
         print(f"  {accel.name}: {count} ({percentage:.1f}%)")
+    
+    # Count by user expertise
+    expertise_counts = Counter(issue[6] for issue in categorized_issues if issue[6] is not None)
+    print("\nUser Expertise Distribution:")
+    for expertise, count in expertise_counts.most_common():
+        percentage = (count / total) * 100
+        print(f"  {expertise.name}: {count} ({percentage:.1f}%)")
 
 
 if __name__ == "__main__":
     # Load categorized issues from JSON files
-    categorized_issues = load_categorized_results('/Users/bubblepipe/repo/gpu-bugs/categorized-gemini-2.5-flash/categorized_issues_*.json')
+    categorized_issues = load_categorized_results('/Users/bubblepipe/repo/gpu-bugs/categorized_issues_*.json')
     
     if categorized_issues:
         # Print statistics
