@@ -2,9 +2,188 @@
 
 import matplotlib.pyplot as plt
 import numpy as np
-from collections import Counter
-from results_loader import load_categorized_results
+from collections import Counter, defaultdict
+from results_loader import load_categorized_results, load_categorized_json_files
 from cates import IsReallyBug, UserPerspective, DeveloperPerspective, AcceleratorSpecific, UserExpertise
+
+# Set style for better-looking plots
+plt.style.use('seaborn-v0_8-darkgrid')
+
+
+def get_framework_from_url(url):
+    """Extract framework name from GitHub URL."""
+    if 'pytorch/pytorch' in url:
+        return 'PyTorch'
+    elif 'tensorflow/tensorflow' in url:
+        return 'TensorFlow'
+    elif 'jax-ml/jax' in url:
+        return 'JAX'
+    elif 'NVIDIA/TensorRT' in url:
+        return 'TensorRT'
+    elif 'triton-lang/triton' in url:
+        return 'Triton'
+    else:
+        return 'Unknown'
+
+
+def plot_platform_distributions(categorized_issues, title="", ax=None):
+    """
+    Plot categorization distributions for a set of issues on a given axis.
+    
+    Args:
+        categorized_issues: List of tuples with categorization data
+        title: Title for the subplot
+        ax: Matplotlib axis to plot on
+    """
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(10, 6))
+    
+    # Extract categorizations
+    is_really_bug = [issue[2] for issue in categorized_issues if issue[2] is not None]
+    user_perspective = [issue[3] for issue in categorized_issues if issue[3] is not None]
+    developer_perspective = [issue[4] for issue in categorized_issues if issue[4] is not None]
+    accelerator_specific = [issue[5] for issue in categorized_issues if issue[5] is not None]
+    user_expertise = [issue[6] for issue in categorized_issues if issue[6] is not None]
+    
+    # Count each category
+    categories = {
+        'Is Bug': Counter(is_really_bug),
+        'User View': Counter(user_perspective),
+        'Dev View': Counter(developer_perspective),
+        'Platform': Counter(accelerator_specific),
+        'Expertise': Counter(user_expertise)
+    }
+    
+    # Prepare data for grouped bar plot with subtitles
+    category_info = {
+        'Is Bug': 'Bug classification',
+        'User View': "User's perspective",
+        'Dev View': "Developer's approach",
+        'Platform': 'Hardware specificity',
+        'Expertise': 'User skill level'
+    }
+    category_names = list(categories.keys())
+    
+    # Calculate max items in any category to determine bar width
+    max_items = max(len(cat_counts) for cat_counts in categories.values())
+    bar_width = min(0.15, 0.8 / max_items)  # Dynamically adjust bar width
+    x_pos = np.arange(len(category_names))
+    
+    # Define extended color palettes for each category type
+    # Using colorblind-friendly and visually appealing colors with gradients
+    category_palettes = {
+        'Is Bug': ['#1e5f8e', '#2E86AB', '#5EB1BF', '#84D2F6', '#A4C3D2', '#CFE5E7'],  # Blues (6 colors for 5 options)
+        'User View': ['#2d6a4f', '#40916c', '#52B788', '#74C69D', '#95D5B2', '#B7E4C7', '#D8F3DC', '#e5f5e0', '#c7e9c0', '#a1d99b', '#74c476', '#41ab5d'],  # Greens (12 colors for 11 options)
+        'Dev View': ['#d84a05', '#F77F00', '#F9A03F', '#FCBF49', '#FFD166', '#FFE5A5', '#ffe8c8', '#ffd4a3', '#ffc07e'],  # Oranges (9 colors for 9 options)
+        'Platform': ['#a61e4d', '#D62828', '#F94144', '#F3722C', '#F8961E', '#F9C74F', '#ffd166', '#ffe169'],  # Reds to Yellows (8 colors for 8 options)
+        'Expertise': ['#5b0e8c', '#7209B7', '#9D4EDD', '#B298DC', '#C77DFF']  # Purples (5 colors for 4 options)
+    }
+    
+    # Track all unique values across categories for legend
+    all_values = set()
+    for cat_counts in categories.values():
+        all_values.update(cat_counts.keys())
+    
+    # Plot bars for each unique value
+    offset = 0
+    plotted_items = {}
+    
+    for i, (cat_name, cat_counts) in enumerate(categories.items()):
+        # Get all values for this category, sorted by count
+        sorted_items = sorted(cat_counts.items(), key=lambda x: x[1], reverse=True)
+        
+        # Get the color palette for this category
+        palette = category_palettes[cat_name]
+        
+        # Calculate offset to center the bars
+        num_items = len(sorted_items)
+        start_offset = -(num_items - 1) * bar_width / 2
+        
+        for j, (item, count) in enumerate(sorted_items):
+            label = item.name.replace('_', ' ').title()[:15]  # Truncate long labels
+            # Extract the code (e.g., "1.a", "2.b") from the enum value
+            code = item.value.split()[0]  # Get the first part before the space
+            
+            # Use modulo to cycle through colors if needed
+            color = palette[j % len(palette)]
+            bar_position = i + start_offset + j * bar_width
+            ax.bar(bar_position, count, bar_width * 0.9,  # Slightly smaller to add gaps
+                   label=label if label not in plotted_items else "",
+                   color=color, edgecolor='#2D3436', linewidth=0.5, alpha=0.85)
+            plotted_items[label] = True
+            
+            # Add labels on the bar
+            if count > 0:
+                # Extract the code (e.g., "1.a", "2.b") from the enum value
+                code = item.value.split()[0]  # Get the first part before the space
+                # Add code label on top (vertical, black)
+                ax.text(bar_position, count + 1.5, code,
+                       ha='center', va='bottom', fontsize=9, fontweight='bold', 
+                       color='black', rotation=90)
+                # Add count value below the code
+                ax.text(bar_position, count + 0.2, str(count),
+                       ha='center', va='bottom', fontsize=8, color='black')
+    
+    ax.set_xlabel('Category', fontsize=11, fontweight='semibold')
+    ax.set_ylabel('Count', fontsize=11, fontweight='semibold')
+    ax.set_title(f'{title} (n={len(categorized_issues)})', fontsize=13, fontweight='bold')
+    ax.set_xticks(x_pos)
+    ax.set_xticklabels(category_names, rotation=0, fontsize=10, ha='center')
+    ax.grid(axis='y', alpha=0.3, linestyle='--', linewidth=0.5)
+    ax.set_facecolor('#FAFBFC')
+    
+    # Don't show legend on individual plots (too crowded)
+    # ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
+
+
+def plot_all_platforms_distributions(categorized_issues, save_path="platform_distributions.png"):
+    """
+    Create a single figure with 6 subplots: one for each platform and one combined.
+    
+    Args:
+        categorized_issues: List of all categorized issue tuples
+        save_path: Path to save the combined figure
+    """
+    # Separate issues by platform
+    platform_issues = defaultdict(list)
+    
+    for issue in categorized_issues:
+        url = issue[1]  # URL is at index 1
+        framework = get_framework_from_url(url)
+        platform_issues[framework].append(issue)
+    
+    # Create figure with 2x3 subplots
+    fig, axes = plt.subplots(2, 3, figsize=(20, 12))
+    fig.suptitle('Bug Categorization Distributions by Platform', fontsize=18, fontweight='bold', y=1.02)
+    fig.patch.set_facecolor('#F8F9FA')
+    
+    # Define platform order
+    platforms = ['PyTorch', 'TensorFlow', 'JAX', 'TensorRT', 'Triton']
+    
+    # Plot individual platforms
+    for idx, platform in enumerate(platforms):
+        row = idx // 3
+        col = idx % 3
+        ax = axes[row, col]
+        
+        platform_data = platform_issues.get(platform, [])
+        plot_platform_distributions(platform_data, title=platform, ax=ax)
+    
+    # Plot combined (all platforms)
+    ax = axes[1, 2]
+    plot_platform_distributions(categorized_issues, title="All Platforms Combined", ax=ax)
+    
+    # Adjust layout
+    plt.tight_layout()
+    
+    # Save figure
+    if save_path:
+        plt.savefig(save_path, dpi=150, bbox_inches='tight')
+        print(f"Platform distributions saved to {save_path}")
+    else:
+        plt.show()
+    
+    return fig
 
 
 def plot_bug_distributions(categorized_issues, save_path=None):
@@ -24,77 +203,123 @@ def plot_bug_distributions(categorized_issues, save_path=None):
     
     # Create subplots - now with 6 plots (2x3 grid)
     fig, ((ax1, ax2, ax3), (ax4, ax5, ax6)) = plt.subplots(2, 3, figsize=(20, 12))
-    fig.suptitle('Distribution of GPU Bug Categorizations', fontsize=16)
+    fig.suptitle('Distribution of GPU Bug Categorizations', fontsize=18, fontweight='bold')
+    fig.patch.set_facecolor('#F8F9FA')
     
     # Plot Is Really Bug
     bug_counts = Counter(is_really_bug)
-    bug_labels = [bt.name.replace('_', ' ').title() for bt in bug_counts.keys()]
+    bug_items = list(bug_counts.keys())
+    bug_labels = [bt.name.replace('_', ' ').title() for bt in bug_items]
+    bug_codes = [bt.value.split()[0] for bt in bug_items]  # Extract codes like "1.a"
     bug_values = list(bug_counts.values())
     
-    ax1.bar(bug_labels, bug_values, color='skyblue', edgecolor='black')
-    ax1.set_title('Is Really Bug Distribution')
+    ax1.bar(bug_labels, bug_values, color='#5EB1BF', edgecolor='#2D3436', linewidth=0.8, alpha=0.85)
+    ax1.set_title('Is Really Bug Distribution', fontweight='bold', fontsize=12)
     ax1.set_ylabel('Count')
     ax1.tick_params(axis='x', rotation=45)
+    ax1.set_facecolor('#FAFBFC')
+    ax1.grid(axis='y', alpha=0.3, linestyle='--', linewidth=0.5)
     
-    # Add value labels on bars
-    for i, v in enumerate(bug_values):
-        ax1.text(i, v + 0.1, str(v), ha='center', va='bottom')
+    # Add value and code labels on bars
+    for i, (v, code) in enumerate(zip(bug_values, bug_codes)):
+        if v > 0:
+            # Add code label on top (vertical, black)
+            ax1.text(i, v + 1.5, code, ha='center', va='bottom', 
+                    fontsize=9, fontweight='bold', color='black', rotation=90)
+            # Add count value below the code
+            ax1.text(i, v + 0.2, str(v), ha='center', va='bottom', fontsize=8, color='black')
     
     # Plot User Perspective
     user_counts = Counter(user_perspective)
-    user_labels = [up.name.replace('_', ' ').title() for up in user_counts.keys()]
+    user_items = list(user_counts.keys())
+    user_labels = [up.name.replace('_', ' ').title() for up in user_items]
+    user_codes = [up.value.split()[0] for up in user_items]  # Extract codes like "2.a"
     user_values = list(user_counts.values())
     
-    ax2.bar(user_labels, user_values, color='lightcoral', edgecolor='black')
-    ax2.set_title('User Perspective Distribution')
+    ax2.bar(user_labels, user_values, color='#74C69D', edgecolor='#2D3436', linewidth=0.8, alpha=0.85)
+    ax2.set_title('User Perspective Distribution', fontweight='bold', fontsize=12)
     ax2.set_ylabel('Count')
     ax2.tick_params(axis='x', rotation=45)
+    ax2.set_facecolor('#FAFBFC')
+    ax2.grid(axis='y', alpha=0.3, linestyle='--', linewidth=0.5)
     
-    # Add value labels on bars
-    for i, v in enumerate(user_values):
-        ax2.text(i, v + 0.1, str(v), ha='center', va='bottom')
+    # Add value and code labels on bars
+    for i, (v, code) in enumerate(zip(user_values, user_codes)):
+        if v > 0:
+            # Add code label on top (vertical, black)
+            ax2.text(i, v + 1.5, code, ha='center', va='bottom', 
+                    fontsize=9, fontweight='bold', color='black', rotation=90)
+            # Add count value below the code
+            ax2.text(i, v + 0.2, str(v), ha='center', va='bottom', fontsize=8, color='black')
     
     # Plot Developer Perspective  
     dev_counts = Counter(developer_perspective)
-    dev_labels = [dp.name.replace('_', ' ').title() for dp in dev_counts.keys()]
+    dev_items = list(dev_counts.keys())
+    dev_labels = [dp.name.replace('_', ' ').title() for dp in dev_items]
+    dev_codes = [dp.value.split()[0] for dp in dev_items]  # Extract codes like "3.a"
     dev_values = list(dev_counts.values())
     
-    ax3.bar(dev_labels, dev_values, color='lightgreen', edgecolor='black')
-    ax3.set_title('Developer Perspective Distribution')
+    ax3.bar(dev_labels, dev_values, color='#F9A03F', edgecolor='#2D3436', linewidth=0.8, alpha=0.85)
+    ax3.set_title('Developer Perspective Distribution', fontweight='bold', fontsize=12)
     ax3.set_ylabel('Count')
     ax3.tick_params(axis='x', rotation=45)
+    ax3.set_facecolor('#FAFBFC')
+    ax3.grid(axis='y', alpha=0.3, linestyle='--', linewidth=0.5)
     
-    # Add value labels on bars
-    for i, v in enumerate(dev_values):
-        ax3.text(i, v + 0.1, str(v), ha='center', va='bottom')
+    # Add value and code labels on bars
+    for i, (v, code) in enumerate(zip(dev_values, dev_codes)):
+        if v > 0:
+            # Add code label on top (vertical, black)
+            ax3.text(i, v + 1.5, code, ha='center', va='bottom', 
+                    fontsize=9, fontweight='bold', color='black', rotation=90)
+            # Add count value below the code
+            ax3.text(i, v + 0.2, str(v), ha='center', va='bottom', fontsize=8, color='black')
     
     # Plot Accelerator Specific
     accel_counts = Counter(accelerator_specific)
-    accel_labels = [ac.name.replace('_', ' ').title() for ac in accel_counts.keys()]
+    accel_items = list(accel_counts.keys())
+    accel_labels = [ac.name.replace('_', ' ').title() for ac in accel_items]
+    accel_codes = [ac.value.split()[0] for ac in accel_items]  # Extract codes like "4.a"
     accel_values = list(accel_counts.values())
     
-    ax4.bar(accel_labels, accel_values, color='gold', edgecolor='black')
-    ax4.set_title('Accelerator Specific Distribution')
+    ax4.bar(accel_labels, accel_values, color='#F94144', edgecolor='#2D3436', linewidth=0.8, alpha=0.85)
+    ax4.set_title('Accelerator Specific Distribution', fontweight='bold', fontsize=12)
     ax4.set_ylabel('Count')
     ax4.tick_params(axis='x', rotation=45)
+    ax4.set_facecolor('#FAFBFC')
+    ax4.grid(axis='y', alpha=0.3, linestyle='--', linewidth=0.5)
     
-    # Add value labels on bars
-    for i, v in enumerate(accel_values):
-        ax4.text(i, v + 0.1, str(v), ha='center', va='bottom')
+    # Add value and code labels on bars
+    for i, (v, code) in enumerate(zip(accel_values, accel_codes)):
+        if v > 0:
+            # Add code label on top (vertical, black)
+            ax4.text(i, v + 1.5, code, ha='center', va='bottom', 
+                    fontsize=9, fontweight='bold', color='black', rotation=90)
+            # Add count value below the code
+            ax4.text(i, v + 0.2, str(v), ha='center', va='bottom', fontsize=8, color='black')
     
     # Plot User Expertise
     expertise_counts = Counter(user_expertise)
-    expertise_labels = [ue.name.replace('_', ' ').title() for ue in expertise_counts.keys()]
+    expertise_items = list(expertise_counts.keys())
+    expertise_labels = [ue.name.replace('_', ' ').title() for ue in expertise_items]
+    expertise_codes = [ue.value.split()[0] for ue in expertise_items]  # Extract codes like "5.a"
     expertise_values = list(expertise_counts.values())
     
-    ax5.bar(expertise_labels, expertise_values, color='purple', edgecolor='black')
-    ax5.set_title('User Expertise Distribution')
+    ax5.bar(expertise_labels, expertise_values, color='#9D4EDD', edgecolor='#2D3436', linewidth=0.8, alpha=0.85)
+    ax5.set_title('User Expertise Distribution', fontweight='bold', fontsize=12)
     ax5.set_ylabel('Count')
     ax5.tick_params(axis='x', rotation=45)
+    ax5.set_facecolor('#FAFBFC')
+    ax5.grid(axis='y', alpha=0.3, linestyle='--', linewidth=0.5)
     
-    # Add value labels on bars
-    for i, v in enumerate(expertise_values):
-        ax5.text(i, v + 0.1, str(v), ha='center', va='bottom')
+    # Add value and code labels on bars
+    for i, (v, code) in enumerate(zip(expertise_values, expertise_codes)):
+        if v > 0:
+            # Add code label on top (vertical, black)
+            ax5.text(i, v + 1.5, code, ha='center', va='bottom', 
+                    fontsize=9, fontweight='bold', color='black', rotation=90)
+            # Add count value below the code
+            ax5.text(i, v + 0.2, str(v), ha='center', va='bottom', fontsize=8, color='black')
     
     # Hide the 6th subplot (we only have 5 categories)
     ax6.axis('off')
@@ -138,7 +363,9 @@ def plot_combined_heatmap(categorized_issues, save_path=None):
     
     # Create heatmap
     fig, ax = plt.subplots(figsize=(12, 10))
-    im = ax.imshow(matrix, cmap='YlOrRd', aspect='auto')
+    fig.patch.set_facecolor('#F8F9FA')
+    ax.set_facecolor('#FAFBFC')
+    im = ax.imshow(matrix, cmap='RdBu_r', aspect='auto', alpha=0.9)
     
     # Set ticks and labels
     ax.set_xticks(np.arange(len(unique_dev)))
@@ -156,8 +383,8 @@ def plot_combined_heatmap(categorized_issues, save_path=None):
     # Add text annotations
     for i in range(len(unique_user)):
         for j in range(len(unique_dev)):
-            text = ax.text(j, i, int(matrix[i, j]),
-                          ha="center", va="center", color="black" if matrix[i, j] < matrix.max()/2 else "white")
+            ax.text(j, i, int(matrix[i, j]),
+                   ha="center", va="center", color="black" if matrix[i, j] < matrix.max()/2 else "white")
     
     ax.set_title("Co-occurrence of User Perspective and Developer Perspective")
     ax.set_xlabel("Developer Perspective")
@@ -224,8 +451,11 @@ if __name__ == "__main__":
         # Print statistics
         print_statistics(categorized_issues)
         
-        # Create plots
-        plot_bug_distributions(categorized_issues, save_path="bug_distributions.png")
+        # Create platform-specific plots
+        plot_all_platforms_distributions(categorized_issues, save_path="platform_distributions.png")
+        
+        # Also create the original detailed plots if needed
+        # plot_bug_distributions(categorized_issues, save_path="bug_distributions.png")
         # plot_combined_heatmap(categorized_issues, save_path="bug_heatmap.png")
     else:
         print("No categorized issues found.")
