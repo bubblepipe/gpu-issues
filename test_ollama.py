@@ -3,21 +3,10 @@
 
 import json
 import sys
-from cate import ask_local_ollama, load_issues_from_categorized_file
+from cate import ask_local_ollama, load_framework_issues
 
-# Load a single issue for testing
-frameworks = ['pytorch', 'tensorflow', 'jax', 'tensorrt', 'triton']
-issue_groups = []
-
-for framework in frameworks:
-    try:
-        with open(f'./issues/{framework}_issues.json', 'r') as f:
-            issues = json.load(f)
-            if issues:
-                issue_groups.append(issues)
-                break  # Just get one framework's issues for testing
-    except FileNotFoundError:
-        continue
+# Load issues from frameworks
+issue_groups = load_framework_issues()
 
 if not issue_groups or not issue_groups[0]:
     print("No issues found to test with")

@@ -154,28 +154,19 @@ def print_issues(issues):
     for issue in issues:
         print_issue(issue)
 
-# Count issues in each file
-frameworks = ['pytorch', 'tensorflow', 'jax', 'tensorrt', 'triton']
-
-issue_groups = [];
-
-for framework in frameworks:
-    try:
-        with open(f'./issues/{framework}_issues.json', 'r') as f:
-            # issues += json.load(f)
-            issue_groups.append(json.load(f))
-    except FileNotFoundError:
-        print(f"{framework}: file not found")
-
-count = 0;
-for issues in issue_groups:
-    count += len(issues)
-
-
-
-# Load categorized issues from JSON files
-# Update the pattern to match your JSON files location
-categorized_issues = load_categorized_results('/Users/bubblepipe/repo/gpu-bugs/categorized_issues_*.json')
+def load_framework_issues():
+    """Load issues from all framework JSON files."""
+    frameworks = ['pytorch', 'tensorflow', 'jax', 'tensorrt', 'triton']
+    issue_groups = []
+    
+    for framework in frameworks:
+        try:
+            with open(f'./issues/{framework}_issues.json', 'r') as f:
+                issue_groups.append(json.load(f))
+        except FileNotFoundError:
+            print(f"{framework}: file not found")
+    
+    return issue_groups
 
 def parse_is_really_bug(code):
     return IS_REALLY_BUG_LOOKUP.get(code)
@@ -484,85 +475,92 @@ def ask_opus_4(issue):
         return Err(f"Unexpected error with Anthropic API: {e}")
 
 
-issues_categorized = []
-
-# Create a set of URLs that are already categorized for fast lookup
-categorized_urls = get_categorized_urls(categorized_issues)
-
-
-
-all_selected_issues = []
-if USE_CATEGORIZED_FILE:
-    # Load issues from previously categorized file
-    categorized_file_path = '/Users/bubblepipe/repo/gpu-bugs/categorized/categorized_issues_20250808_041918.json'
-    all_selected_issues = load_issues_from_categorized_file(categorized_file_path, issue_groups)
-else:
-    # Select random uncategorized issues
-    all_selected_issues = select_random_uncategorized_issues(issue_groups, categorized_urls, num_per_framework=40)
-
-print(f"\nTotal issues selected: {len(all_selected_issues)}")
-print("\n\n=========================\n\n")
-
-
-for issue in all_selected_issues:
-    # Fetch comments for this issue
-    comments = fetch_issue_comments(issue['html_url'])
-    issue['comments_data'] = comments
-    # print_issue(issue)
-    # exit()
-    
-    title = issue['title']
-    url = issue['html_url']
-    print(f"{title} \n{url}")
-    
-    # Choose which LLM to use based on configuration
-    if LLM_CHOICE == "gemini":
-        result = ask_gemini_2_5_flash(issue)
-    elif LLM_CHOICE == "ollama":
-        result = ask_local_ollama(issue)
-    elif LLM_CHOICE == "opus":
-        result = ask_opus_4(issue)
-    else:
-        result = ask_gemini_2_5_flash(issue)  # Default to Gemini
-    if result.is_err():
-        error_msg = result.unwrap_err()
-        sys.stderr.write(f"Failed to categorize: {title} - {url}\n")
-        sys.stderr.write(f"Error: {error_msg}\n")
-        print()
-        # exit()
-        continue
-    
-    # Unwrap the successful result
-    categorization = result.unwrap()
-    issues_categorized.append( (title, url, categorization[0], categorization[1], categorization[2], categorization[3], categorization[4] ) )
-    for item in categorization:
-        print(" - " + item.value)
-    print()
-    # exit()
-    
-
-# Save categorized issues to a file
-if issues_categorized:
+def main():
+    """Main function to categorize issues."""
     import datetime
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_filename = f"categorized_issues_{timestamp}.json"
     
-    # Convert enum objects to strings for JSON serialization
-    json_data = []
-    for item in issues_categorized:
-        json_data.append({
-            "title": item[0],
-            "url": item[1],
-            "is_really_bug": item[2].value if item[2] else None,
-            "user_perspective": item[3].value if item[3] else None,
-            "developer_perspective": item[4].value if item[4] else None,
-            "accelerator_specific": item[5].value if item[5] else None,
-            "user_expertise": item[6].value if item[6] else None
-        })
+    # Load framework issues
+    issue_groups = load_framework_issues()
     
-    with open(output_filename, 'w') as f:
-        json.dump(json_data, f, indent=2)
+    # Load categorized issues from JSON files
+    categorized_issues = load_categorized_results('/Users/bubblepipe/repo/gpu-bugs/categorized_issues_*.json')
     
-    print(f"\nSaved {len(issues_categorized)} categorized issues to {output_filename}")
-else:
-    print("\nNo new issues were categorized.")
+    # Create a set of URLs that are already categorized for fast lookup
+    categorized_urls = get_categorized_urls(categorized_issues)
+    
+    # Select issues to categorize
+    all_selected_issues = []
+    if USE_CATEGORIZED_FILE:
+        # Load issues from previously categorized file
+        categorized_file_path = '/Users/bubblepipe/repo/gpu-bugs/categorized/categorized_issues_20250808_041918.json'
+        all_selected_issues = load_issues_from_categorized_file(categorized_file_path, issue_groups)
+    else:
+        # Select random uncategorized issues
+        all_selected_issues = select_random_uncategorized_issues(issue_groups, categorized_urls, num_per_framework=40)
+    
+    print(f"\nTotal issues selected: {len(all_selected_issues)}")
+    print("\n\n=========================\n\n")
+    
+    issues_categorized = []
+    
+    for issue in all_selected_issues:
+        # Fetch comments for this issue
+        comments = fetch_issue_comments(issue['html_url'])
+        issue['comments_data'] = comments
+        
+        title = issue['title']
+        url = issue['html_url']
+        print(f"{title} \n{url}")
+        
+        # Choose which LLM to use based on configuration
+        if LLM_CHOICE == "gemini":
+            result = ask_gemini_2_5_flash(issue)
+        elif LLM_CHOICE == "ollama":
+            result = ask_local_ollama(issue)
+        elif LLM_CHOICE == "opus":
+            result = ask_opus_4(issue)
+        else:
+            result = ask_gemini_2_5_flash(issue)  # Default to Gemini
+            
+        if result.is_err():
+            error_msg = result.unwrap_err()
+            sys.stderr.write(f"Failed to categorize: {title} - {url}\n")
+            sys.stderr.write(f"Error: {error_msg}\n")
+            print()
+            continue
+        
+        # Unwrap the successful result
+        categorization = result.unwrap()
+        issues_categorized.append((title, url, categorization[0], categorization[1], categorization[2], categorization[3], categorization[4]))
+        for item in categorization:
+            print(" - " + item.value)
+        print()
+    
+    # Save categorized issues to a file
+    if issues_categorized:
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_filename = f"categorized_issues_{timestamp}.json"
+        
+        # Convert enum objects to strings for JSON serialization
+        json_data = []
+        for item in issues_categorized:
+            json_data.append({
+                "title": item[0],
+                "url": item[1],
+                "is_really_bug": item[2].value if item[2] else None,
+                "user_perspective": item[3].value if item[3] else None,
+                "developer_perspective": item[4].value if item[4] else None,
+                "accelerator_specific": item[5].value if item[5] else None,
+                "user_expertise": item[6].value if item[6] else None
+            })
+        
+        with open(output_filename, 'w') as f:
+            json.dump(json_data, f, indent=2)
+        
+        print(f"\nSaved {len(issues_categorized)} categorized issues to {output_filename}")
+    else:
+        print("\nNo new issues were categorized.")
+
+
+if __name__ == "__main__":
+    main()
