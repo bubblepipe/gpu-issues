@@ -10,9 +10,10 @@ from cates import IS_REALLY_BUG_LOOKUP, USER_PERSPECTIVE_LOOKUP, DEVELOPER_PERSP
 from results_loader import load_categorized_results, get_categorized_urls
 
 
-# Choose source for issues: either from fresh selection or from previously categorized file
+# Configuration settings
 USE_CATEGORIZED_FILE = False  # Set to False to select fresh issues
 NUM_PER_FRAMEWORK = 1
+LLM_CHOICE = "gemini"  # Options: "gemini", "ollama", "opus"
 
 def load_issues_from_categorized_file(categorized_file_path, issue_groups):
     """Load issues from a previously categorized JSON file."""
@@ -266,6 +267,7 @@ def ask_local_ollama(issue):
     """Query Ollama API on remote h100 server with full issue content including comments."""
     import subprocess
     import json as json_module
+    import re
     
     ollama_url = "http://localhost:11434/api/generate"
     model = "qwen3:235b"
@@ -295,17 +297,27 @@ def ask_local_ollama(issue):
             else:
                 issue_content += "(Empty comment)\n"
     
+    # Modified prompt to be more explicit about output format
+    modified_prompt = BUG_CATEGORIZATION_PROMPT.replace(
+        "please reply with only the code representing your option",
+        "IMPORTANT: Reply with ONLY the codes, no explanation or reasoning. Just output exactly 5 codes separated by commas"
+    )
+    
     # Combine prompt with issue content
-    full_prompt = BUG_CATEGORIZATION_PROMPT + "\n\nISSUE CONTENT:\n" + issue_content
+    full_prompt = modified_prompt + "\n\nISSUE CONTENT:\n" + issue_content
+    
+    # Add system prompt to skip reasoning
+    system_message = "You must respond with ONLY the categorization codes in the format: 1.x, 2.x, 3.x, 4.x, 5.x. Do not include any reasoning, thinking, or explanation."
     
     # Prepare JSON data for curl
     data = {
         "model": model,
         "prompt": full_prompt,
+        "system": system_message,
         "stream": False,
         "options": {
             "temperature": 0.1,  # Low temperature for consistent categorization
-            "num_predict": 30,   # We need a slightly longer response like "1.d, 2.c, 3.b, 4.a, 5.b"
+            "num_predict": 200,  # Increased to handle potential thinking tags
             "num_ctx": 4096,     # Limit context window to speed up processing
             "repeat_penalty": 1.0
         }
@@ -368,6 +380,33 @@ def ask_local_ollama(issue):
         
         # Debug: print the raw response
         print(f"DEBUG: Raw Ollama response: {text[:200]}...")
+        
+        # Check if the response contains thinking tags and extract the answer
+        if '<think>' in text and '</think>' in text:
+            # Extract content after the thinking tags
+            think_end = text.find('</think>')
+            if think_end != -1:
+                # Get everything after the closing think tag
+                answer = text[think_end + 8:].strip()
+                if answer:
+                    text = answer
+                    print(f"DEBUG: Extracted answer after thinking tags: {text}")
+            else:
+                # Try to extract the categorization pattern from within the thinking
+                import re as regex_module
+                pattern = r'([1-5]\.[a-l]),\s*([1-5]\.[a-l]),\s*([1-5]\.[a-l]),\s*([1-5]\.[a-l]),\s*([1-5]\.[a-l])'
+                match = regex_module.search(pattern, text)
+                if match:
+                    text = ', '.join(match.groups())
+                    print(f"DEBUG: Extracted codes from within thinking: {text}")
+        
+        # Also handle cases where answer might be wrapped in other tags
+        elif '<answer>' in text and '</answer>' in text:
+            start = text.find('<answer>') + 8
+            end = text.find('</answer>')
+            if start > 7 and end > start:
+                text = text[start:end].strip()
+                print(f"DEBUG: Extracted from answer tags: {text}")
         
         # Parse the LLM output and return the Result
         return parse_llm_output(text)
@@ -476,10 +515,15 @@ for issue in all_selected_issues:
     url = issue['html_url']
     print(f"{title} \n{url}")
     
-    # Choose which LLM to use
-    result = ask_gemini_2_5_flash(issue)
-    # result = ask_local_ollama(issue)
-    # result = ask_opus_4(issue)
+    # Choose which LLM to use based on configuration
+    if LLM_CHOICE == "gemini":
+        result = ask_gemini_2_5_flash(issue)
+    elif LLM_CHOICE == "ollama":
+        result = ask_local_ollama(issue)
+    elif LLM_CHOICE == "opus":
+        result = ask_opus_4(issue)
+    else:
+        result = ask_gemini_2_5_flash(issue)  # Default to Gemini
     if result.is_err():
         error_msg = result.unwrap_err()
         sys.stderr.write(f"Failed to categorize: {title} - {url}\n")
