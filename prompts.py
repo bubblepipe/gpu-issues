@@ -2,7 +2,6 @@
 
 BUG_CATEGORIZATION_PROMPT = """
 please categorize the issue in the three following aspects:
-
 1. is this really a bug? 
   1.a no
   1.b sort of no, working as designed, but design is problematic, unexpected, unconventional or surprising 
@@ -23,14 +22,16 @@ please categorize the issue in the three following aspects:
   2.k not a bug, not applicable
 3. from the perspective the framework developers, how is the problem is being addressed? 
   3.a architectural refactoring that changes the design and structure of the system. 
-  3.b adding checks, bounds validation, and error handling
-  3.c algorithm optimization  
-  3.d addressing race conditions and distributed execution issues
-  3.e reconfigure the environment: this often involves closed source toolchains like cuda library, gpu 3.f driver and also hardware implementation. by selecting a micro-arch specific library, update driver 3.g version or workaround the flaws of the hardware,  
+  3.b adding checks, initializations, bounds validation, error handling, or edge case and special value fix, like empty tensor, NaN floating point values and etc 
+  3.c Mathematical correctness fixes
+  3.d specialized algorithm selection, including selecting dedicated kernel on input size, data properties and  memory access patterns (like sparse or dense), hardware-specific algorithm variants (GPU vs CPU), datatype and precision specific implementations (float32 vs float16, int8 vs fp8), optimizing,  parallelization and vectorization optimization 
+  3.e other algorithm optimization  
+  3.f addressing race conditions and distributed execution issues
+  3.g reconfigure the environment: this often involves closed source toolchains like cuda library, gpu driver and also hardware implementation. by selecting a micro-arch specific library, update driver version or workaround the flaws of the hardware,  
   3.h won’t fix, due to man hour constraint or issue priority 
-  3.j won’t fix, or proposed with workarounds that not really fixed the root cause, as this problem is fundamentally not fixable, due to that this problem is caused by closed source software or hardware 
-  3.k won’t fix, due to other reasons
-  3.l not a bug, not applicable
+  3.i won’t fix, or proposed with workarounds that not really fixed the root cause, as this problem is fundamentally not fixable, due to that this problem is caused by closed source software or hardware 
+  3.j won’t fix, due to other reasons
+  3.k not a bug, not applicable
 4. is this bug specific to some accelerator platform, or is it universal? 
 sometimes the issue enquirer may only have access to a single accelerator platform and this information could be be available. it is fine to say `don’t know` 
   4.a yes, accelerator vendor-specific (NVIDIA only, AMD only, Intel only, etc)
@@ -48,5 +49,6 @@ sometimes the issue enquirer may only have access to a single accelerator platfo
   5.d Not applicable, or not known 
 
 please reply with only the code representing your option, with comma splitting in between, like `1.a, 2.f, 3.c`. I don't need any further explanation. 
+when you are not sure, please choose the `not applicable` or `don't know`, however, please always prefer a more specific or concrete option over a more generic one.
 The url to the issue is: 
 """
