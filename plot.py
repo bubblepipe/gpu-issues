@@ -64,16 +64,9 @@ def plot_platform_distributions(categorized_issues, title="", ax=None):
     }
     category_names = list(categories.keys())
     
-    # Calculate max items based on all possible enum values to ensure consistent bar width
-    # Use the maximum number of enum values across all categories
-    max_possible_items = max(
-        len(list(IsReallyBug)),        # 5 items
-        len(list(UserPerspective)),     # 11 items
-        len(list(DeveloperPerspective)), # 9 items
-        len(list(AcceleratorSpecific)), # 8 items
-        len(list(UserExpertise))       # 4 items
-    )  # This will be 11 (UserPerspective has the most)
-    bar_width = min(0.15, 0.8 / max_possible_items)  # Dynamically adjust bar width
+    # Calculate max items in any category to determine bar width
+    max_items = max(len(cat_counts) for cat_counts in categories.values())
+    bar_width = min(0.15, 0.8 / max_items)  # Dynamically adjust bar width
     x_pos = np.arange(len(category_names))
     
     # Define extended color palettes for each category type
@@ -92,6 +85,7 @@ def plot_platform_distributions(categorized_issues, title="", ax=None):
         all_values.update(cat_counts.keys())
     
     # Plot bars for each unique value
+    offset = 0
     plotted_items = {}
     
     # Define all possible enum values for each category in their original order
@@ -183,31 +177,22 @@ def plot_all_platforms_distributions(categorized_issues, save_path="platform_dis
     fig.patch.set_facecolor('#F8F9FA')
     
     # Define platform order
-    platforms = ['PyTorch', 'TensorFlow', 'JAX', 'TensorRT', 'Triton']
+    platforms = ['PyTorch', 'TensorFlow', 'JAX', 'TensorRT', 'Triton', 'All']
     
     # Plot individual platforms
     for idx, platform in enumerate(platforms):
         row = idx // 3
         col = idx % 3
         ax = axes[row, col]
-        
-        platform_data = platform_issues.get(platform, [])
-        plot_platform_distributions(platform_data, title=platform, ax=ax)
+        if platform == 'All':
+            plot_platform_distributions(categorized_issues, title="All Platforms Combined", ax=ax)
+        else:
+            platform_data = platform_issues.get(platform, [])
+            plot_platform_distributions(platform_data, title=platform, ax=ax)
     
-    # Plot combined (all platforms)
-    ax = axes[1, 2]
-    plot_platform_distributions(categorized_issues, title="All Platforms Combined", ax=ax)
-    
-    # Ensure consistent y-axis limits across all subplots for uniform appearance
-    # Find the maximum y value across all subplots
-    max_y = 0
-    for ax in axes.flat:
-        if ax.get_ylim()[1] > max_y:
-            max_y = ax.get_ylim()[1]
-    
-    # Apply the same y-axis limit to all subplots
-    for ax in axes.flat:
-        ax.set_ylim(0, max_y)
+    # # Plot combined (all platforms)
+    # ax = axes[1, 2]
+    # plot_platform_distributions(categorized_issues, title="`All Platforms Combined", ax=ax)
     
     # Adjust layout
     plt.tight_layout()
@@ -267,7 +252,7 @@ def plot_bug_distributions(categorized_issues, save_path=None):
             ax1.text(i, v + 0.2, str(v), ha='center', va='bottom', fontsize=8, color='black')
         else:
             # For zero-count bars, show the code at the bottom with lighter color
-            ax1.text(i, 1.5, code, ha='center', va='bottom', 
+            ax1.text(i, 0.5, code, ha='center', va='bottom', 
                     fontsize=8, color='gray', rotation=90)
             ax1.text(i, 0.1, '0', ha='center', va='bottom', fontsize=7, color='gray')
     
@@ -296,7 +281,7 @@ def plot_bug_distributions(categorized_issues, save_path=None):
             ax2.text(i, v + 0.2, str(v), ha='center', va='bottom', fontsize=8, color='black')
         else:
             # For zero-count bars, show the code at the bottom with lighter color
-            ax2.text(i, 1.5, code, ha='center', va='bottom', 
+            ax2.text(i, 0.5, code, ha='center', va='bottom', 
                     fontsize=8, color='gray', rotation=90)
             ax2.text(i, 0.1, '0', ha='center', va='bottom', fontsize=7, color='gray')
     
@@ -325,7 +310,7 @@ def plot_bug_distributions(categorized_issues, save_path=None):
             ax3.text(i, v + 0.2, str(v), ha='center', va='bottom', fontsize=8, color='black')
         else:
             # For zero-count bars, show the code at the bottom with lighter color
-            ax3.text(i, 1.5, code, ha='center', va='bottom', 
+            ax3.text(i, 0.5, code, ha='center', va='bottom', 
                     fontsize=8, color='gray', rotation=90)
             ax3.text(i, 0.1, '0', ha='center', va='bottom', fontsize=7, color='gray')
     
@@ -354,7 +339,7 @@ def plot_bug_distributions(categorized_issues, save_path=None):
             ax4.text(i, v + 0.2, str(v), ha='center', va='bottom', fontsize=8, color='black')
         else:
             # For zero-count bars, show the code at the bottom with lighter color
-            ax4.text(i, 1.5, code, ha='center', va='bottom', 
+            ax4.text(i, 0.5, code, ha='center', va='bottom', 
                     fontsize=8, color='gray', rotation=90)
             ax4.text(i, 0.1, '0', ha='center', va='bottom', fontsize=7, color='gray')
     
@@ -383,7 +368,7 @@ def plot_bug_distributions(categorized_issues, save_path=None):
             ax5.text(i, v + 0.2, str(v), ha='center', va='bottom', fontsize=8, color='black')
         else:
             # For zero-count bars, show the code at the bottom with lighter color
-            ax5.text(i, 1.5, code, ha='center', va='bottom', 
+            ax5.text(i, 0.5, code, ha='center', va='bottom', 
                     fontsize=8, color='gray', rotation=90)
             ax5.text(i, 0.1, '0', ha='center', va='bottom', fontsize=7, color='gray')
     
