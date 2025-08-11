@@ -88,9 +88,20 @@ def plot_platform_distributions(categorized_issues, title="", ax=None):
     offset = 0
     plotted_items = {}
     
+    # Define all possible enum values for each category in their original order
+    all_enums = {
+        'Is Bug': list(IsReallyBug),
+        'User View': list(UserPerspective),
+        'Dev View': list(DeveloperPerspective),
+        'Platform': list(AcceleratorSpecific),
+        'Expertise': list(UserExpertise)
+    }
+    
     for i, (cat_name, cat_counts) in enumerate(categories.items()):
-        # Get all values for this category, sorted by count
-        sorted_items = sorted(cat_counts.items(), key=lambda x: x[1], reverse=True)
+        # Get all enum values for this category in their defined order
+        all_items = all_enums[cat_name]
+        # Create list of (item, count) tuples, using 0 for missing items
+        sorted_items = [(item, cat_counts.get(item, 0)) for item in all_items]
         
         # Get the color palette for this category
         palette = category_palettes[cat_name]
@@ -113,9 +124,10 @@ def plot_platform_distributions(categorized_issues, title="", ax=None):
             plotted_items[label] = True
             
             # Add labels on the bar
+            # Extract the code (e.g., "1.a", "2.b") from the enum value
+            code = item.value.split()[0]  # Get the first part before the space
+            
             if count > 0:
-                # Extract the code (e.g., "1.a", "2.b") from the enum value
-                code = item.value.split()[0]  # Get the first part before the space
                 # Add code label on top (vertical, black)
                 ax.text(bar_position, count + 1.5, code,
                        ha='center', va='bottom', fontsize=9, fontweight='bold', 
@@ -123,6 +135,13 @@ def plot_platform_distributions(categorized_issues, title="", ax=None):
                 # Add count value below the code
                 ax.text(bar_position, count + 0.2, str(count),
                        ha='center', va='bottom', fontsize=8, color='black')
+            else:
+                # For zero-count bars, show the code at the bottom with lighter color
+                ax.text(bar_position, 0.5, code,
+                       ha='center', va='bottom', fontsize=8, 
+                       color='gray', rotation=90)
+                ax.text(bar_position, 0.1, '0',
+                       ha='center', va='bottom', fontsize=7, color='gray')
     
     ax.set_xlabel('Category', fontsize=11, fontweight='semibold')
     ax.set_ylabel('Count', fontsize=11, fontweight='semibold')
@@ -208,10 +227,11 @@ def plot_bug_distributions(categorized_issues, save_path=None):
     
     # Plot Is Really Bug
     bug_counts = Counter(is_really_bug)
-    bug_items = list(bug_counts.keys())
+    # Get all enum values in order, not just the ones with data
+    bug_items = list(IsReallyBug)
     bug_labels = [bt.name.replace('_', ' ').title() for bt in bug_items]
     bug_codes = [bt.value.split()[0] for bt in bug_items]  # Extract codes like "1.a"
-    bug_values = list(bug_counts.values())
+    bug_values = [bug_counts.get(bt, 0) for bt in bug_items]  # Use 0 for missing values
     
     ax1.bar(bug_labels, bug_values, color='#5EB1BF', edgecolor='#2D3436', linewidth=0.8, alpha=0.85)
     ax1.set_title('Is Really Bug Distribution', fontweight='bold', fontsize=12)
@@ -228,13 +248,19 @@ def plot_bug_distributions(categorized_issues, save_path=None):
                     fontsize=9, fontweight='bold', color='black', rotation=90)
             # Add count value below the code
             ax1.text(i, v + 0.2, str(v), ha='center', va='bottom', fontsize=8, color='black')
+        else:
+            # For zero-count bars, show the code at the bottom with lighter color
+            ax1.text(i, 0.5, code, ha='center', va='bottom', 
+                    fontsize=8, color='gray', rotation=90)
+            ax1.text(i, 0.1, '0', ha='center', va='bottom', fontsize=7, color='gray')
     
     # Plot User Perspective
     user_counts = Counter(user_perspective)
-    user_items = list(user_counts.keys())
+    # Get all enum values in order, not just the ones with data
+    user_items = list(UserPerspective)
     user_labels = [up.name.replace('_', ' ').title() for up in user_items]
     user_codes = [up.value.split()[0] for up in user_items]  # Extract codes like "2.a"
-    user_values = list(user_counts.values())
+    user_values = [user_counts.get(up, 0) for up in user_items]  # Use 0 for missing values
     
     ax2.bar(user_labels, user_values, color='#74C69D', edgecolor='#2D3436', linewidth=0.8, alpha=0.85)
     ax2.set_title('User Perspective Distribution', fontweight='bold', fontsize=12)
@@ -251,13 +277,19 @@ def plot_bug_distributions(categorized_issues, save_path=None):
                     fontsize=9, fontweight='bold', color='black', rotation=90)
             # Add count value below the code
             ax2.text(i, v + 0.2, str(v), ha='center', va='bottom', fontsize=8, color='black')
+        else:
+            # For zero-count bars, show the code at the bottom with lighter color
+            ax2.text(i, 0.5, code, ha='center', va='bottom', 
+                    fontsize=8, color='gray', rotation=90)
+            ax2.text(i, 0.1, '0', ha='center', va='bottom', fontsize=7, color='gray')
     
     # Plot Developer Perspective  
     dev_counts = Counter(developer_perspective)
-    dev_items = list(dev_counts.keys())
+    # Get all enum values in order, not just the ones with data
+    dev_items = list(DeveloperPerspective)
     dev_labels = [dp.name.replace('_', ' ').title() for dp in dev_items]
     dev_codes = [dp.value.split()[0] for dp in dev_items]  # Extract codes like "3.a"
-    dev_values = list(dev_counts.values())
+    dev_values = [dev_counts.get(dp, 0) for dp in dev_items]  # Use 0 for missing values
     
     ax3.bar(dev_labels, dev_values, color='#F9A03F', edgecolor='#2D3436', linewidth=0.8, alpha=0.85)
     ax3.set_title('Developer Perspective Distribution', fontweight='bold', fontsize=12)
@@ -274,13 +306,19 @@ def plot_bug_distributions(categorized_issues, save_path=None):
                     fontsize=9, fontweight='bold', color='black', rotation=90)
             # Add count value below the code
             ax3.text(i, v + 0.2, str(v), ha='center', va='bottom', fontsize=8, color='black')
+        else:
+            # For zero-count bars, show the code at the bottom with lighter color
+            ax3.text(i, 0.5, code, ha='center', va='bottom', 
+                    fontsize=8, color='gray', rotation=90)
+            ax3.text(i, 0.1, '0', ha='center', va='bottom', fontsize=7, color='gray')
     
     # Plot Accelerator Specific
     accel_counts = Counter(accelerator_specific)
-    accel_items = list(accel_counts.keys())
+    # Get all enum values in order, not just the ones with data
+    accel_items = list(AcceleratorSpecific)
     accel_labels = [ac.name.replace('_', ' ').title() for ac in accel_items]
     accel_codes = [ac.value.split()[0] for ac in accel_items]  # Extract codes like "4.a"
-    accel_values = list(accel_counts.values())
+    accel_values = [accel_counts.get(ac, 0) for ac in accel_items]  # Use 0 for missing values
     
     ax4.bar(accel_labels, accel_values, color='#F94144', edgecolor='#2D3436', linewidth=0.8, alpha=0.85)
     ax4.set_title('Accelerator Specific Distribution', fontweight='bold', fontsize=12)
@@ -297,13 +335,19 @@ def plot_bug_distributions(categorized_issues, save_path=None):
                     fontsize=9, fontweight='bold', color='black', rotation=90)
             # Add count value below the code
             ax4.text(i, v + 0.2, str(v), ha='center', va='bottom', fontsize=8, color='black')
+        else:
+            # For zero-count bars, show the code at the bottom with lighter color
+            ax4.text(i, 0.5, code, ha='center', va='bottom', 
+                    fontsize=8, color='gray', rotation=90)
+            ax4.text(i, 0.1, '0', ha='center', va='bottom', fontsize=7, color='gray')
     
     # Plot User Expertise
     expertise_counts = Counter(user_expertise)
-    expertise_items = list(expertise_counts.keys())
+    # Get all enum values in order, not just the ones with data
+    expertise_items = list(UserExpertise)
     expertise_labels = [ue.name.replace('_', ' ').title() for ue in expertise_items]
     expertise_codes = [ue.value.split()[0] for ue in expertise_items]  # Extract codes like "5.a"
-    expertise_values = list(expertise_counts.values())
+    expertise_values = [expertise_counts.get(ue, 0) for ue in expertise_items]  # Use 0 for missing values
     
     ax5.bar(expertise_labels, expertise_values, color='#9D4EDD', edgecolor='#2D3436', linewidth=0.8, alpha=0.85)
     ax5.set_title('User Expertise Distribution', fontweight='bold', fontsize=12)
@@ -320,6 +364,11 @@ def plot_bug_distributions(categorized_issues, save_path=None):
                     fontsize=9, fontweight='bold', color='black', rotation=90)
             # Add count value below the code
             ax5.text(i, v + 0.2, str(v), ha='center', va='bottom', fontsize=8, color='black')
+        else:
+            # For zero-count bars, show the code at the bottom with lighter color
+            ax5.text(i, 0.5, code, ha='center', va='bottom', 
+                    fontsize=8, color='gray', rotation=90)
+            ax5.text(i, 0.1, '0', ha='center', va='bottom', fontsize=7, color='gray')
     
     # Hide the 6th subplot (we only have 5 categories)
     ax6.axis('off')
