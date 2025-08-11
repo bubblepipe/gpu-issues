@@ -211,6 +211,122 @@ def plot_all_platforms_distributions(categorized_issues, save_path="platform_dis
     return fig
 
 
+def plot_definitely_bugs_distributions(categorized_issues, save_path="definitely_bugs_distributions.png"):
+    """
+    Create a single figure with 6 subplots showing only issues categorized as "1.d really yes, definitely a bug".
+    
+    Args:
+        categorized_issues: List of all categorized issue tuples
+        save_path: Path to save the combined figure
+    """
+    # Filter for only definitely bugs (1.d)
+    definitely_bugs = [issue for issue in categorized_issues 
+                      if issue[2] is not None and issue[2] == IsReallyBug.DEFINITELY_YES]
+    
+    if not definitely_bugs:
+        print("No issues categorized as 'definitely a bug' (1.d) found.")
+        return None
+    
+    # Separate filtered issues by platform
+    platform_issues = defaultdict(list)
+    
+    for issue in definitely_bugs:
+        url = issue[1]  # URL is at index 1
+        framework = get_framework_from_url(url)
+        platform_issues[framework].append(issue)
+    
+    # Create figure with 2x3 subplots
+    fig, axes = plt.subplots(2, 3, figsize=(20, 12))
+    fig.suptitle('Bug Categorization Distributions - Only Definitely Bugs (1.d)', fontsize=18, fontweight='bold', y=1.02)
+    fig.patch.set_facecolor('#F8F9FA')
+    
+    # Define platform order
+    platforms = ['PyTorch', 'TensorFlow', 'JAX', 'TensorRT', 'Triton', 'All']
+    
+    # Plot individual platforms
+    for idx, platform in enumerate(platforms):
+        row = idx // 3
+        col = idx % 3
+        ax = axes[row, col]
+        if platform == 'All':
+            plot_platform_distributions(definitely_bugs, title="All Platforms Combined (Definitely Bugs)", ax=ax)
+        else:
+            platform_data = platform_issues.get(platform, [])
+            plot_platform_distributions(platform_data, title=f"{platform} (Definitely Bugs)", ax=ax)
+        
+    # Adjust layout
+    plt.tight_layout()
+    
+    # Save figure
+    if save_path:
+        plt.savefig(save_path, dpi=150, bbox_inches='tight')
+        print(f"Definitely bugs distributions saved to {save_path}")
+    else:
+        plt.show()
+    
+    return fig
+
+
+def plot_expertise_filtered_distributions(categorized_issues, expertise_level, save_path=None):
+    """
+    Create a single figure with 6 subplots showing only issues for a specific expertise level.
+    
+    Args:
+        categorized_issues: List of all categorized issue tuples
+        expertise_level: UserExpertise enum value to filter by (BEGINNER, INTERMEDIATE, or ADVANCED)
+        save_path: Path to save the combined figure
+    """
+    # Filter for specific expertise level
+    filtered_issues = [issue for issue in categorized_issues 
+                       if issue[6] is not None and issue[6] == expertise_level]
+    
+    if not filtered_issues:
+        print(f"No issues found for expertise level: {expertise_level.name}")
+        return None
+    
+    # Separate filtered issues by platform
+    platform_issues = defaultdict(list)
+    
+    for issue in filtered_issues:
+        url = issue[1]  # URL is at index 1
+        framework = get_framework_from_url(url)
+        platform_issues[framework].append(issue)
+    
+    # Create figure with 2x3 subplots
+    fig, axes = plt.subplots(2, 3, figsize=(20, 12))
+    fig.suptitle(f'Bug Categorization Distributions - {expertise_level.name.title()} Level Users', 
+                 fontsize=18, fontweight='bold', y=1.02)
+    fig.patch.set_facecolor('#F8F9FA')
+    
+    # Define platform order
+    platforms = ['PyTorch', 'TensorFlow', 'JAX', 'TensorRT', 'Triton', 'All']
+    
+    # Plot individual platforms
+    for idx, platform in enumerate(platforms):
+        row = idx // 3
+        col = idx % 3
+        ax = axes[row, col]
+        if platform == 'All':
+            plot_platform_distributions(filtered_issues, 
+                                       title=f"All Platforms ({expertise_level.name.title()})", ax=ax)
+        else:
+            platform_data = platform_issues.get(platform, [])
+            plot_platform_distributions(platform_data, 
+                                       title=f"{platform} ({expertise_level.name.title()})", ax=ax)
+        
+    # Adjust layout
+    plt.tight_layout()
+    
+    # Save figure
+    if save_path:
+        plt.savefig(save_path, dpi=150, bbox_inches='tight')
+        print(f"{expertise_level.name.title()} level distributions saved to {save_path}")
+    else:
+        plt.show()
+    
+    return fig
+
+
 def plot_bug_distributions(categorized_issues, save_path=None):
     """
     Create bar plots showing the distribution of all five categorization dimensions.
@@ -506,8 +622,19 @@ if __name__ == "__main__":
         # Print statistics
         print_statistics(categorized_issues)
         
-        # Create platform-specific plots
+        # Create platform-specific plots for all issues
         plot_all_platforms_distributions(categorized_issues, save_path="platform_distributions.png")
+        
+        # Create platform-specific plots for only definitely bugs (1.d)
+        plot_definitely_bugs_distributions(categorized_issues, save_path="definitely_bugs_distributions.png")
+        
+        # Create platform-specific plots filtered by user expertise
+        plot_expertise_filtered_distributions(categorized_issues, UserExpertise.BEGINNER, 
+                                             save_path="beginner_distributions.png")
+        plot_expertise_filtered_distributions(categorized_issues, UserExpertise.INTERMEDIATE,
+                                             save_path="intermediate_distributions.png")
+        plot_expertise_filtered_distributions(categorized_issues, UserExpertise.ADVANCED,
+                                             save_path="advanced_distributions.png")
         
         # Also create the original detailed plots if needed
         # plot_bug_distributions(categorized_issues, save_path="bug_distributions.png")

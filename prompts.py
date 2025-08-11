@@ -1,7 +1,8 @@
 """Prompts for GPU bug categorization"""
 
 BUG_CATEGORIZATION_PROMPT = """
-please categorize the issue in the three following aspects:
+please categorize a issue in the three following aspects:
+
 1. is this really a bug? 
   1.a no
   1.b sort of no, working as designed, but design is problematic, unexpected, unconventional or surprising 
@@ -47,8 +48,24 @@ sometimes the issue enquirer may only have access to a single accelerator platfo
   5.b Intermediate - Users building custom architectures, implementing research papers, or adapting models for specific use cases.
   5.c Advanced - Users extending framework capabilities, optimizing performance, or working with framework internals.
   5.d Not applicable, or not known 
+6. Confidence in categorization:
+   6.a High - Clear evidence
+   6.b Medium - Some uncertainty
+   6.c Low - Significant ambiguity
 
-please reply with only the code representing your option, with comma splitting in between, like `1.a, 2.f, 3.c`. I don't need any further explanation. 
-when you are not sure, please choose the `not applicable` or `don't know`, however, please always prefer a more specific or concrete option over a more generic one.
+Note: If multiple categories apply, choose the most specific one.
+For example, if it's both a "performance regression" and "GPU-specific", 
+prioritize the root cause category.
+
+Expected output format: "1.d, 2.f, 3.c, 4.a, 5.b"
+Only include the letter codes, no explanations.
+
+When analyzing the issue, consider:
+- Error messages and stack traces
+- Hardware/software environment mentioned
+- Steps to reproduce
+- Discussion in comments
+- Pull request or fix details (if linked)
+
 The url to the issue is: 
 """

@@ -1,5 +1,6 @@
 import json
 import random
+from sre_parse import CATEGORIES
 import requests
 import os
 import sys
@@ -11,10 +12,14 @@ from results_loader import load_categorized_results, get_categorized_urls
 
 
 # Configuration settings
+# USE_CATEGORIZED_FILE = True # Set to False to select fresh issues
 USE_CATEGORIZED_FILE = False  # Set to False to select fresh issues
-NUM_PER_FRAMEWORK = 1
+NUM_PER_FRAMEWORK = 20
+# LLM_CHOICE = "ollama"  # Options: "gemini", "ollama", "opus"
 LLM_CHOICE = "gemini"  # Options: "gemini", "ollama", "opus"
 OLLAMA_MODEL = "qwen3:235b"  # Change this to match your available model
+CATEGORIZED_FILE_PATH = '/Users/bubblepipe/repo/gpu-bugs/categorized_issues_20250811_144744.json'
+
 
 def load_issues_from_categorized_file(categorized_file_path, issue_groups):
     """Load issues from a previously categorized JSON file."""
@@ -309,10 +314,10 @@ def ask_local_ollama(issue):
         "stream": False,
         "options": {
             "temperature": 0.1,  # Low temperature for consistent categorization
-            "num_predict": 500,  # Increased even more for slow models that may produce verbose output
+            "num_predict": 10000,  # Very large to allow full thinking process
             "num_ctx": 16384,    # Use larger context window (16k tokens) - balance between speed and capacity
             "repeat_penalty": 1.0,
-            "stop": ["</think>", "\n\n"]  # Stop sequences to prevent excessive output
+            "stop": ["</think>"]  # Only stop at the end of thinking tags
         }
     }
     
@@ -342,13 +347,8 @@ def ask_local_ollama(issue):
     """
     
     try:
-        # Print debug info
+        # Print minimal info
         print(f"Sending request to Ollama for: {issue.get('title', 'Unknown')[:50]}...")
-        
-        # Print the command for debugging
-        print(f"DEBUG: SSH Command:\n{ssh_command}\n")
-        print(f"DEBUG: Local temp file: {local_temp.name}")
-        print(f"DEBUG: Remote temp file: {remote_temp}")
         
         # Execute SSH command (use shell=True for complex command with pipes)
         result = subprocess.run(
@@ -395,9 +395,6 @@ def ask_local_ollama(issue):
             # Remove trailing backslashes
             text = text.rstrip('\\')
         
-        # Debug: print the raw response
-        print(f"DEBUG: Raw Ollama response: {text[:200]}...")
-        
         # Check if the response contains thinking tags and extract the answer
         if '<think>' in text and '</think>' in text:
             # Extract content after the thinking tags
@@ -407,7 +404,6 @@ def ask_local_ollama(issue):
                 answer = text[think_end + 8:].strip()
                 if answer:
                     text = answer
-                    print(f"DEBUG: Extracted answer after thinking tags: {text}")
             else:
                 # Try to extract the categorization pattern from within the thinking
                 import re as regex_module
@@ -415,7 +411,6 @@ def ask_local_ollama(issue):
                 match = regex_module.search(pattern, text)
                 if match:
                     text = ', '.join(match.groups())
-                    print(f"DEBUG: Extracted codes from within thinking: {text}")
         
         # Also handle cases where answer might be wrapped in other tags
         elif '<answer>' in text and '</answer>' in text:
@@ -518,7 +513,7 @@ def main():
     all_selected_issues = []
     if USE_CATEGORIZED_FILE:
         # Load issues from previously categorized file
-        categorized_file_path = '/Users/bubblepipe/repo/gpu-bugs/categorized/categorized_issues_20250808_041918.json'
+        categorized_file_path = CATEGORIZED_FILE_PATH
         all_selected_issues = load_issues_from_categorized_file(categorized_file_path, issue_groups)
     else:
         # Select random uncategorized issues
