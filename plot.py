@@ -64,9 +64,16 @@ def plot_platform_distributions(categorized_issues, title="", ax=None):
     }
     category_names = list(categories.keys())
     
-    # Calculate max items in any category to determine bar width
-    max_items = max(len(cat_counts) for cat_counts in categories.values())
-    bar_width = min(0.15, 0.8 / max_items)  # Dynamically adjust bar width
+    # Calculate max items based on all possible enum values to ensure consistent bar width
+    # Use the maximum number of enum values across all categories
+    max_possible_items = max(
+        len(list(IsReallyBug)),        # 5 items
+        len(list(UserPerspective)),     # 11 items
+        len(list(DeveloperPerspective)), # 9 items
+        len(list(AcceleratorSpecific)), # 8 items
+        len(list(UserExpertise))       # 4 items
+    )  # This will be 11 (UserPerspective has the most)
+    bar_width = min(0.15, 0.8 / max_possible_items)  # Consistent bar width across all plots
     x_pos = np.arange(len(category_names))
     
     # Define extended color palettes for each category type
@@ -85,7 +92,6 @@ def plot_platform_distributions(categorized_issues, title="", ax=None):
         all_values.update(cat_counts.keys())
     
     # Plot bars for each unique value
-    offset = 0
     plotted_items = {}
     
     # Define all possible enum values for each category in their original order
@@ -124,24 +130,26 @@ def plot_platform_distributions(categorized_issues, title="", ax=None):
             plotted_items[label] = True
             
             # Add labels on the bar
-            # Extract the code (e.g., "1.a", "2.b") from the enum value
-            code = item.value.split()[0]  # Get the first part before the space
+            # Use the full enum value text, truncate if too long
+            full_text = item.value
+            # Truncate to first 25 characters for readability
+            display_text = full_text[:25] + "..." if len(full_text) > 25 else full_text
             
             if count > 0:
-                # Add code label on top (vertical, black)
-                ax.text(bar_position, count + 1.5, code,
-                       ha='center', va='bottom', fontsize=9, fontweight='bold', 
+                # Add full text label on top (vertical, black) with left anchor
+                ax.text(bar_position, count + 1.5, display_text,
+                       ha='left', va='bottom', fontsize=6, fontweight='semibold', 
                        color='black', rotation=90)
-                # Add count value below the code
+                # Add count value below the label
                 ax.text(bar_position, count + 0.2, str(count),
-                       ha='center', va='bottom', fontsize=8, color='black')
+                       ha='center', va='bottom', fontsize=6, color='black')
             else:
-                # For zero-count bars, show the code at the bottom with lighter color
-                ax.text(bar_position, 1.5, code,
-                       ha='center', va='bottom', fontsize=8, 
+                # For zero-count bars, show the text at the bottom with lighter color
+                ax.text(bar_position, 1.5, display_text,
+                       ha='left', va='bottom', fontsize=5, 
                        color='gray', rotation=90)
                 ax.text(bar_position, 0.1, '0',
-                       ha='center', va='bottom', fontsize=7, color='gray')
+                       ha='center', va='bottom', fontsize=5, color='gray')
     
     ax.set_xlabel('Category', fontsize=11, fontweight='semibold')
     ax.set_ylabel('Count', fontsize=11, fontweight='semibold')
@@ -189,11 +197,7 @@ def plot_all_platforms_distributions(categorized_issues, save_path="platform_dis
         else:
             platform_data = platform_issues.get(platform, [])
             plot_platform_distributions(platform_data, title=platform, ax=ax)
-    
-    # # Plot combined (all platforms)
-    # ax = axes[1, 2]
-    # plot_platform_distributions(categorized_issues, title="`All Platforms Combined", ax=ax)
-    
+        
     # Adjust layout
     plt.tight_layout()
     
@@ -232,7 +236,7 @@ def plot_bug_distributions(categorized_issues, save_path=None):
     # Get all enum values in order, not just the ones with data
     bug_items = list(IsReallyBug)
     bug_labels = [bt.name.replace('_', ' ').title() for bt in bug_items]
-    bug_codes = [bt.value.split()[0] for bt in bug_items]  # Extract codes like "1.a"
+    bug_texts = [bt.value[:25] + "..." if len(bt.value) > 25 else bt.value for bt in bug_items]  # Full text, truncated
     bug_values = [bug_counts.get(bt, 0) for bt in bug_items]  # Use 0 for missing values
     
     ax1.bar(bug_labels, bug_values, color='#5EB1BF', edgecolor='#2D3436', linewidth=0.8, alpha=0.85)
@@ -242,26 +246,26 @@ def plot_bug_distributions(categorized_issues, save_path=None):
     ax1.set_facecolor('#FAFBFC')
     ax1.grid(axis='y', alpha=0.3, linestyle='--', linewidth=0.5)
     
-    # Add value and code labels on bars
-    for i, (v, code) in enumerate(zip(bug_values, bug_codes)):
+    # Add value and text labels on bars
+    for i, (v, text) in enumerate(zip(bug_values, bug_texts)):
         if v > 0:
-            # Add code label on top (vertical, black)
-            ax1.text(i, v + 1.5, code, ha='center', va='bottom', 
-                    fontsize=9, fontweight='bold', color='black', rotation=90)
-            # Add count value below the code
-            ax1.text(i, v + 0.2, str(v), ha='center', va='bottom', fontsize=8, color='black')
+            # Add full text label on top (vertical, black) with left anchor
+            ax1.text(i, v + 1.5, text, ha='left', va='bottom', 
+                    fontsize=6, fontweight='semibold', color='black', rotation=90)
+            # Add count value below the label
+            ax1.text(i, v + 0.2, str(v), ha='center', va='bottom', fontsize=6, color='black')
         else:
-            # For zero-count bars, show the code at the bottom with lighter color
-            ax1.text(i, 0.5, code, ha='center', va='bottom', 
-                    fontsize=8, color='gray', rotation=90)
-            ax1.text(i, 0.1, '0', ha='center', va='bottom', fontsize=7, color='gray')
+            # For zero-count bars, show the text at the bottom with lighter color
+            ax1.text(i, 1.5, text, ha='left', va='bottom', 
+                    fontsize=5, color='gray', rotation=90)
+            ax1.text(i, 0.1, '0', ha='center', va='bottom', fontsize=5, color='gray')
     
     # Plot User Perspective
     user_counts = Counter(user_perspective)
     # Get all enum values in order, not just the ones with data
     user_items = list(UserPerspective)
     user_labels = [up.name.replace('_', ' ').title() for up in user_items]
-    user_codes = [up.value.split()[0] for up in user_items]  # Extract codes like "2.a"
+    user_texts = [up.value[:25] + "..." if len(up.value) > 25 else up.value for up in user_items]  # Full text, truncated
     user_values = [user_counts.get(up, 0) for up in user_items]  # Use 0 for missing values
     
     ax2.bar(user_labels, user_values, color='#74C69D', edgecolor='#2D3436', linewidth=0.8, alpha=0.85)
@@ -271,26 +275,26 @@ def plot_bug_distributions(categorized_issues, save_path=None):
     ax2.set_facecolor('#FAFBFC')
     ax2.grid(axis='y', alpha=0.3, linestyle='--', linewidth=0.5)
     
-    # Add value and code labels on bars
-    for i, (v, code) in enumerate(zip(user_values, user_codes)):
+    # Add value and text labels on bars
+    for i, (v, text) in enumerate(zip(user_values, user_texts)):
         if v > 0:
-            # Add code label on top (vertical, black)
-            ax2.text(i, v + 1.5, code, ha='center', va='bottom', 
-                    fontsize=9, fontweight='bold', color='black', rotation=90)
-            # Add count value below the code
-            ax2.text(i, v + 0.2, str(v), ha='center', va='bottom', fontsize=8, color='black')
+            # Add full text label on top (vertical, black) with left anchor
+            ax2.text(i, v + 1.5, text, ha='left', va='bottom', 
+                    fontsize=6, fontweight='semibold', color='black', rotation=90)
+            # Add count value below the label
+            ax2.text(i, v + 0.2, str(v), ha='center', va='bottom', fontsize=6, color='black')
         else:
-            # For zero-count bars, show the code at the bottom with lighter color
-            ax2.text(i, 0.5, code, ha='center', va='bottom', 
-                    fontsize=8, color='gray', rotation=90)
-            ax2.text(i, 0.1, '0', ha='center', va='bottom', fontsize=7, color='gray')
+            # For zero-count bars, show the text at the bottom with lighter color
+            ax2.text(i, 1.5, text, ha='left', va='bottom', 
+                    fontsize=5, color='gray', rotation=90)
+            ax2.text(i, 0.1, '0', ha='center', va='bottom', fontsize=5, color='gray')
     
     # Plot Developer Perspective  
     dev_counts = Counter(developer_perspective)
     # Get all enum values in order, not just the ones with data
     dev_items = list(DeveloperPerspective)
     dev_labels = [dp.name.replace('_', ' ').title() for dp in dev_items]
-    dev_codes = [dp.value.split()[0] for dp in dev_items]  # Extract codes like "3.a"
+    dev_texts = [dp.value[:25] + "..." if len(dp.value) > 25 else dp.value for dp in dev_items]  # Full text, truncated
     dev_values = [dev_counts.get(dp, 0) for dp in dev_items]  # Use 0 for missing values
     
     ax3.bar(dev_labels, dev_values, color='#F9A03F', edgecolor='#2D3436', linewidth=0.8, alpha=0.85)
@@ -300,26 +304,26 @@ def plot_bug_distributions(categorized_issues, save_path=None):
     ax3.set_facecolor('#FAFBFC')
     ax3.grid(axis='y', alpha=0.3, linestyle='--', linewidth=0.5)
     
-    # Add value and code labels on bars
-    for i, (v, code) in enumerate(zip(dev_values, dev_codes)):
+    # Add value and text labels on bars
+    for i, (v, text) in enumerate(zip(dev_values, dev_texts)):
         if v > 0:
-            # Add code label on top (vertical, black)
-            ax3.text(i, v + 1.5, code, ha='center', va='bottom', 
-                    fontsize=9, fontweight='bold', color='black', rotation=90)
-            # Add count value below the code
-            ax3.text(i, v + 0.2, str(v), ha='center', va='bottom', fontsize=8, color='black')
+            # Add full text label on top (vertical, black) with left anchor
+            ax3.text(i, v + 1.5, text, ha='left', va='bottom', 
+                    fontsize=6, fontweight='semibold', color='black', rotation=90)
+            # Add count value below the label
+            ax3.text(i, v + 0.2, str(v), ha='center', va='bottom', fontsize=6, color='black')
         else:
-            # For zero-count bars, show the code at the bottom with lighter color
-            ax3.text(i, 0.5, code, ha='center', va='bottom', 
-                    fontsize=8, color='gray', rotation=90)
-            ax3.text(i, 0.1, '0', ha='center', va='bottom', fontsize=7, color='gray')
+            # For zero-count bars, show the text at the bottom with lighter color
+            ax3.text(i, 1.5, text, ha='left', va='bottom', 
+                    fontsize=5, color='gray', rotation=90)
+            ax3.text(i, 0.1, '0', ha='center', va='bottom', fontsize=5, color='gray')
     
     # Plot Accelerator Specific
     accel_counts = Counter(accelerator_specific)
     # Get all enum values in order, not just the ones with data
     accel_items = list(AcceleratorSpecific)
     accel_labels = [ac.name.replace('_', ' ').title() for ac in accel_items]
-    accel_codes = [ac.value.split()[0] for ac in accel_items]  # Extract codes like "4.a"
+    accel_texts = [ac.value[:25] + "..." if len(ac.value) > 25 else ac.value for ac in accel_items]  # Full text, truncated
     accel_values = [accel_counts.get(ac, 0) for ac in accel_items]  # Use 0 for missing values
     
     ax4.bar(accel_labels, accel_values, color='#F94144', edgecolor='#2D3436', linewidth=0.8, alpha=0.85)
@@ -329,26 +333,26 @@ def plot_bug_distributions(categorized_issues, save_path=None):
     ax4.set_facecolor('#FAFBFC')
     ax4.grid(axis='y', alpha=0.3, linestyle='--', linewidth=0.5)
     
-    # Add value and code labels on bars
-    for i, (v, code) in enumerate(zip(accel_values, accel_codes)):
+    # Add value and text labels on bars
+    for i, (v, text) in enumerate(zip(accel_values, accel_texts)):
         if v > 0:
-            # Add code label on top (vertical, black)
-            ax4.text(i, v + 1.5, code, ha='center', va='bottom', 
-                    fontsize=9, fontweight='bold', color='black', rotation=90)
-            # Add count value below the code
-            ax4.text(i, v + 0.2, str(v), ha='center', va='bottom', fontsize=8, color='black')
+            # Add full text label on top (vertical, black) with left anchor
+            ax4.text(i, v + 1.5, text, ha='left', va='bottom', 
+                    fontsize=6, fontweight='semibold', color='black', rotation=90)
+            # Add count value below the label
+            ax4.text(i, v + 0.2, str(v), ha='center', va='bottom', fontsize=6, color='black')
         else:
-            # For zero-count bars, show the code at the bottom with lighter color
-            ax4.text(i, 0.5, code, ha='center', va='bottom', 
-                    fontsize=8, color='gray', rotation=90)
-            ax4.text(i, 0.1, '0', ha='center', va='bottom', fontsize=7, color='gray')
+            # For zero-count bars, show the text at the bottom with lighter color
+            ax4.text(i, 1.5, text, ha='left', va='bottom', 
+                    fontsize=5, color='gray', rotation=90)
+            ax4.text(i, 0.1, '0', ha='center', va='bottom', fontsize=5, color='gray')
     
     # Plot User Expertise
     expertise_counts = Counter(user_expertise)
     # Get all enum values in order, not just the ones with data
     expertise_items = list(UserExpertise)
     expertise_labels = [ue.name.replace('_', ' ').title() for ue in expertise_items]
-    expertise_codes = [ue.value.split()[0] for ue in expertise_items]  # Extract codes like "5.a"
+    expertise_texts = [ue.value[:25] + "..." if len(ue.value) > 25 else ue.value for ue in expertise_items]  # Full text, truncated
     expertise_values = [expertise_counts.get(ue, 0) for ue in expertise_items]  # Use 0 for missing values
     
     ax5.bar(expertise_labels, expertise_values, color='#9D4EDD', edgecolor='#2D3436', linewidth=0.8, alpha=0.85)
@@ -358,19 +362,19 @@ def plot_bug_distributions(categorized_issues, save_path=None):
     ax5.set_facecolor('#FAFBFC')
     ax5.grid(axis='y', alpha=0.3, linestyle='--', linewidth=0.5)
     
-    # Add value and code labels on bars
-    for i, (v, code) in enumerate(zip(expertise_values, expertise_codes)):
+    # Add value and text labels on bars
+    for i, (v, text) in enumerate(zip(expertise_values, expertise_texts)):
         if v > 0:
-            # Add code label on top (vertical, black)
-            ax5.text(i, v + 1.5, code, ha='center', va='bottom', 
-                    fontsize=9, fontweight='bold', color='black', rotation=90)
-            # Add count value below the code
-            ax5.text(i, v + 0.2, str(v), ha='center', va='bottom', fontsize=8, color='black')
+            # Add full text label on top (vertical, black) with left anchor
+            ax5.text(i, v + 1.5, text, ha='left', va='bottom', 
+                    fontsize=6, fontweight='semibold', color='black', rotation=90)
+            # Add count value below the label
+            ax5.text(i, v + 0.2, str(v), ha='center', va='bottom', fontsize=6, color='black')
         else:
-            # For zero-count bars, show the code at the bottom with lighter color
-            ax5.text(i, 0.5, code, ha='center', va='bottom', 
-                    fontsize=8, color='gray', rotation=90)
-            ax5.text(i, 0.1, '0', ha='center', va='bottom', fontsize=7, color='gray')
+            # For zero-count bars, show the text at the bottom with lighter color
+            ax5.text(i, 1.5, text, ha='left', va='bottom', 
+                    fontsize=5, color='gray', rotation=90)
+            ax5.text(i, 0.1, '0', ha='center', va='bottom', fontsize=5, color='gray')
     
     # Hide the 6th subplot (we only have 5 categories)
     ax6.axis('off')

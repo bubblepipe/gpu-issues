@@ -14,6 +14,7 @@ from results_loader import load_categorized_results, get_categorized_urls
 USE_CATEGORIZED_FILE = False  # Set to False to select fresh issues
 NUM_PER_FRAMEWORK = 1
 LLM_CHOICE = "gemini"  # Options: "gemini", "ollama", "opus"
+OLLAMA_MODEL = "qwen3:235b"  # Change this to match your available model
 
 def load_issues_from_categorized_file(categorized_file_path, issue_groups):
     """Load issues from a previously categorized JSON file."""
@@ -261,7 +262,7 @@ def ask_local_ollama(issue):
     import re
     
     ollama_url = "http://localhost:11434/api/generate"
-    model = "qwen3:235b"
+    model = OLLAMA_MODEL  # Use the configured model
     
     # Build the full issue content including body and comments
     issue_content = f"Title: {issue['title']}\n"
@@ -308,9 +309,10 @@ def ask_local_ollama(issue):
         "stream": False,
         "options": {
             "temperature": 0.1,  # Low temperature for consistent categorization
-            "num_predict": 200,  # Increased to handle potential thinking tags
-            "num_ctx": 4096,     # Limit context window to speed up processing
-            "repeat_penalty": 1.0
+            "num_predict": 500,  # Increased even more for slow models that may produce verbose output
+            "num_ctx": 16384,    # Use larger context window (16k tokens) - balance between speed and capacity
+            "repeat_penalty": 1.0,
+            "stop": ["</think>", "\n\n"]  # Stop sequences to prevent excessive output
         }
     }
     
@@ -331,9 +333,11 @@ def ask_local_ollama(issue):
     
     # Build the SSH + SCP + curl command
     # First copy the file to remote, then use it with curl, then clean up both files
+    # Add -w flag to curl to show HTTP status code
+    # Increased --max-time to 1800 seconds (30 minutes) for very slow models
     ssh_command = f"""
     scp {local_temp.name} h100:{remote_temp} && \
-    ssh h100 'curl -s -X POST {ollama_url} -H "Content-Type: application/json" -d @{remote_temp} --max-time 120; rm -f {remote_temp}' && \
+    ssh h100 'curl -s -X POST {ollama_url} -H "Content-Type: application/json" -d @{remote_temp} --max-time 1800 -w "\\nHTTP_STATUS:%{{http_code}}\\n"; rm -f {remote_temp}' && \
     rm -f {local_temp.name}
     """
     
@@ -352,7 +356,7 @@ def ask_local_ollama(issue):
             shell=True,
             capture_output=True,
             text=True,
-            timeout=130  # Increased timeout for large model
+            timeout=1820  # Increased timeout to 1820 seconds (30+ minutes) for very slow models
         )
         
         if result.returncode != 0:
@@ -362,12 +366,34 @@ def ask_local_ollama(issue):
         if not result.stdout:
             return Err(f"Empty response from Ollama. stderr: {result.stderr}")
         
+        # Check for HTTP status code in response
+        if "HTTP_STATUS:" in result.stdout:
+            parts = result.stdout.split("HTTP_STATUS:")
+            status_code = parts[-1].strip()
+            response_body = parts[0].strip()
+            
+            if status_code == "404":
+                return Err(f"Ollama API returned 404. Make sure Ollama is running on h100 and the model '{model}' is available. Try: ssh h100 'ollama list'")
+            elif status_code != "200":
+                return Err(f"Ollama API returned HTTP {status_code}. Response: {response_body[:200]}")
+        else:
+            response_body = result.stdout
+        
         # Parse the JSON response
         try:
-            json_response = json_module.loads(result.stdout)
+            json_response = json_module.loads(response_body)
         except json_module.JSONDecodeError as e:
-            return Err(f"Failed to parse JSON. Response: {result.stdout[:500]}... Error: {e}")
+            return Err(f"Failed to parse JSON. Response: {response_body[:500]}... Error: {e}")
+        
+        # Get the response text and handle backslash escaping
         text = json_response.get('response', '').strip()
+        
+        # Handle cases where response might be cut off with backslashes
+        if text.endswith('\\'):
+            # Response was likely truncated, try to extract what we can
+            print(f"DEBUG: Response appears truncated (ends with backslash)")
+            # Remove trailing backslashes
+            text = text.rstrip('\\')
         
         # Debug: print the raw response
         print(f"DEBUG: Raw Ollama response: {text[:200]}...")
@@ -408,7 +434,7 @@ def ask_local_ollama(issue):
             os.unlink(local_temp.name)
         except:
             pass
-        return Err(f"SSH command timed out after 130 seconds - Ollama may be overloaded or the model is too slow")
+        return Err(f"SSH command timed out after 1820 seconds (30 minutes) - Ollama may be overloaded or the model is too slow")
     except json_module.JSONDecodeError as e:
         # Clean up local temp file
         try:
