@@ -28,13 +28,15 @@ class UserPerspective(Enum):
 class DeveloperPerspective(Enum):
     ARCHITECTURAL_REFACTORING = "3.a architectural refactoring"
     ADDING_CHECKS = "3.b adding checks, bounds validation, error handling"
-    ALGORITHM_OPTIMIZATION = "3.c algorithm optimization"
-    RACE_CONDITIONS = "3.d addressing race conditions and distributed execution"
-    RECONFIGURE_ENVIRONMENT = "3.e reconfigure environment (cuda library, gpu driver)"
+    MATHEMATICAL_CORRECTNESS = "3.c Mathematical correctness fixes"
+    SPECIALIZED_ALGORITHM = "3.d specialized algorithm selection"
+    OTHER_ALGORITHM_OPTIMIZATION = "3.e other algorithm optimization"
+    RACE_CONDITIONS = "3.f addressing race conditions and distributed execution"
+    RECONFIGURE_ENVIRONMENT = "3.g reconfigure environment"
     WONT_FIX_CONSTRAINT = "3.h won't fix, due to man hour constraint or priority"
-    WONT_FIX_FUNDAMENTAL = "3.j won't fix, fundamentally not fixable (closed source)"
-    WONT_FIX_OTHER = "3.k won't fix, due to other reasons"
-    NOT_A_BUG = "3.l not a bug, not applicable"
+    WONT_FIX_FUNDAMENTAL = "3.i won't fix, fundamentally not fixable"
+    WONT_FIX_OTHER = "3.j won't fix, due to other reasons"
+    NOT_A_BUG = "3.k not a bug, not applicable"
 
 
 class AcceleratorSpecific(Enum):
@@ -82,13 +84,15 @@ USER_PERSPECTIVE_LOOKUP = {
 DEVELOPER_PERSPECTIVE_LOOKUP = {
     "3.a": DeveloperPerspective.ARCHITECTURAL_REFACTORING,
     "3.b": DeveloperPerspective.ADDING_CHECKS,
-    "3.c": DeveloperPerspective.ALGORITHM_OPTIMIZATION,
-    "3.d": DeveloperPerspective.RACE_CONDITIONS,
-    "3.e": DeveloperPerspective.RECONFIGURE_ENVIRONMENT,
+    "3.c": DeveloperPerspective.MATHEMATICAL_CORRECTNESS,
+    "3.d": DeveloperPerspective.SPECIALIZED_ALGORITHM,
+    "3.e": DeveloperPerspective.OTHER_ALGORITHM_OPTIMIZATION,
+    "3.f": DeveloperPerspective.RACE_CONDITIONS,
+    "3.g": DeveloperPerspective.RECONFIGURE_ENVIRONMENT,
     "3.h": DeveloperPerspective.WONT_FIX_CONSTRAINT,
-    "3.j": DeveloperPerspective.WONT_FIX_FUNDAMENTAL,
-    "3.k": DeveloperPerspective.WONT_FIX_OTHER,
-    "3.l": DeveloperPerspective.NOT_A_BUG,
+    "3.i": DeveloperPerspective.WONT_FIX_FUNDAMENTAL,
+    "3.j": DeveloperPerspective.WONT_FIX_OTHER,
+    "3.k": DeveloperPerspective.NOT_A_BUG,
 }
 
 ACCELERATOR_SPECIFIC_LOOKUP = {

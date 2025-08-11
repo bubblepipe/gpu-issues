@@ -69,7 +69,7 @@ def plot_platform_distributions(categorized_issues, title="", ax=None):
     max_possible_items = max(
         len(list(IsReallyBug)),        # 5 items
         len(list(UserPerspective)),     # 11 items
-        len(list(DeveloperPerspective)), # 9 items
+        len(list(DeveloperPerspective)), # 11 items
         len(list(AcceleratorSpecific)), # 8 items
         len(list(UserExpertise))       # 4 items
     )  # This will be 11 (UserPerspective has the most)
@@ -81,7 +81,7 @@ def plot_platform_distributions(categorized_issues, title="", ax=None):
     category_palettes = {
         'Is Bug': ['#1e5f8e', '#2E86AB', '#5EB1BF', '#84D2F6', '#A4C3D2', '#CFE5E7'],  # Blues (6 colors for 5 options)
         'User View': ['#2d6a4f', '#40916c', '#52B788', '#74C69D', '#95D5B2', '#B7E4C7', '#D8F3DC', '#e5f5e0', '#c7e9c0', '#a1d99b', '#74c476', '#41ab5d'],  # Greens (12 colors for 11 options)
-        'Dev View': ['#d84a05', '#F77F00', '#F9A03F', '#FCBF49', '#FFD166', '#FFE5A5', '#ffe8c8', '#ffd4a3', '#ffc07e'],  # Oranges (9 colors for 9 options)
+        'Dev View': ['#d84a05', '#F77F00', '#F9A03F', '#FCBF49', '#FFD166', '#FFE5A5', '#ffe8c8', '#ffd4a3', '#ffc07e', '#ffb85a', '#ffa836'],  # Oranges (11 colors for 11 options)
         'Platform': ['#a61e4d', '#D62828', '#F94144', '#F3722C', '#F8961E', '#F9C74F', '#ffd166', '#ffe169'],  # Reds to Yellows (8 colors for 8 options)
         'Expertise': ['#5b0e8c', '#7209B7', '#9D4EDD', '#B298DC', '#C77DFF']  # Purples (5 colors for 4 options)
     }

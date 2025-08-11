@@ -188,7 +188,7 @@ def parse_user_expertise(code):
 def parse_llm_output(text):
     # Try to find pattern like "1.x, 2.x, 3.x, 4.x, 5.x" anywhere in the text
     import re
-    pattern = r'([1-5]\.[a-l]),\s*([1-5]\.[a-l]),\s*([1-5]\.[a-l]),\s*([1-5]\.[a-l]),\s*([1-5]\.[a-l])'
+    pattern = r'([1-5]\.[a-k]),\s*([1-5]\.[a-k]),\s*([1-5]\.[a-k]),\s*([1-5]\.[a-k]),\s*([1-5]\.[a-k])'
     match = re.search(pattern, text)
     
     if match:
@@ -411,7 +411,7 @@ def ask_local_ollama(issue):
             else:
                 # Try to extract the categorization pattern from within the thinking
                 import re as regex_module
-                pattern = r'([1-5]\.[a-l]),\s*([1-5]\.[a-l]),\s*([1-5]\.[a-l]),\s*([1-5]\.[a-l]),\s*([1-5]\.[a-l])'
+                pattern = r'([1-5]\.[a-k]),\s*([1-5]\.[a-k]),\s*([1-5]\.[a-k]),\s*([1-5]\.[a-k]),\s*([1-5]\.[a-k])'
                 match = regex_module.search(pattern, text)
                 if match:
                     text = ', '.join(match.groups())
@@ -522,7 +522,7 @@ def main():
         all_selected_issues = load_issues_from_categorized_file(categorized_file_path, issue_groups)
     else:
         # Select random uncategorized issues
-        all_selected_issues = select_random_uncategorized_issues(issue_groups, categorized_urls, num_per_framework=40)
+        all_selected_issues = select_random_uncategorized_issues(issue_groups, categorized_urls, num_per_framework=NUM_PER_FRAMEWORK)
     
     print(f"\nTotal issues selected: {len(all_selected_issues)}")
     print("\n\n=========================\n\n")
