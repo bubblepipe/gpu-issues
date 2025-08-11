@@ -4,9 +4,9 @@ import glob
 import json
 import sys
 from cates import (
-    IsReallyBug, UserPerspective, DeveloperPerspective, AcceleratorSpecific, UserExpertise,
+    IsReallyBug, UserPerspective, DeveloperPerspective, AcceleratorSpecific, UserExpertise, Confidence,
     IS_REALLY_BUG_LOOKUP, USER_PERSPECTIVE_LOOKUP, 
-    DEVELOPER_PERSPECTIVE_LOOKUP, ACCELERATOR_SPECIFIC_LOOKUP, USER_EXPERTISE_LOOKUP
+    DEVELOPER_PERSPECTIVE_LOOKUP, ACCELERATOR_SPECIFIC_LOOKUP, USER_EXPERTISE_LOOKUP, CONFIDENCE_LOOKUP
 )
 
 
@@ -18,7 +18,7 @@ def load_categorized_results(pattern):
         pattern: Glob pattern for finding JSON result files (e.g., 'categorized_issues_*.json')
         
     Returns:
-        List of tuples containing (title, url, is_really_bug, user_perspective, developer_perspective, accelerator_specific, user_expertise)
+        List of tuples containing (title, url, is_really_bug, user_perspective, developer_perspective, accelerator_specific, user_expertise, confidence)
     """
     categorized_issues = []
     result_files = glob.glob(pattern)
@@ -36,6 +36,7 @@ def load_categorized_results(pattern):
                 developer_perspective = None
                 accelerator_specific = None
                 user_expertise = None
+                confidence = None
                 
                 # Find the enum objects by matching their value strings
                 if item.get('is_really_bug'):
@@ -68,6 +69,12 @@ def load_categorized_results(pattern):
                             user_expertise = enum_obj
                             break
                 
+                if item.get('confidence'):
+                    for code, enum_obj in CONFIDENCE_LOOKUP.items():
+                        if enum_obj.value == item['confidence']:
+                            confidence = enum_obj
+                            break
+                
                 # Create tuple in the expected format
                 categorized_issues.append((
                     item['title'],
@@ -76,7 +83,8 @@ def load_categorized_results(pattern):
                     user_perspective,
                     developer_perspective,
                     accelerator_specific,
-                    user_expertise
+                    user_expertise,
+                    confidence
                 ))
                 
         except FileNotFoundError:
@@ -111,7 +119,7 @@ def load_categorized_json_files(pattern):
         
     Returns:
         List of dictionaries with keys: title, url, is_really_bug, user_perspective, 
-        developer_perspective, accelerator_specific, user_expertise
+        developer_perspective, accelerator_specific, user_expertise, confidence
     """
     all_issues = []
     result_files = glob.glob(pattern)

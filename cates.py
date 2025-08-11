@@ -57,6 +57,12 @@ class UserExpertise(Enum):
     NOT_APPLICABLE = "5.d Not applicable"
 
 
+class Confidence(Enum):
+    HIGH = "6.a High - Clear evidence"
+    MEDIUM = "6.b Medium - Some uncertainty"
+    LOW = "6.c Low - Significant ambiguity"
+
+
 IS_REALLY_BUG_LOOKUP = {
     "1.a": IsReallyBug.NO,
     "1.b": IsReallyBug.SORT_OF_NO,
@@ -111,4 +117,10 @@ USER_EXPERTISE_LOOKUP = {
     "5.b": UserExpertise.INTERMEDIATE,
     "5.c": UserExpertise.ADVANCED,
     "5.d": UserExpertise.NOT_APPLICABLE,
+}
+
+CONFIDENCE_LOOKUP = {
+    "6.a": Confidence.HIGH,
+    "6.b": Confidence.MEDIUM,
+    "6.c": Confidence.LOW,
 }

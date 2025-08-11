@@ -7,7 +7,7 @@ import sys
 import time
 from result import Ok, Err, Result
 from prompts import BUG_CATEGORIZATION_PROMPT
-from cates import IS_REALLY_BUG_LOOKUP, USER_PERSPECTIVE_LOOKUP, DEVELOPER_PERSPECTIVE_LOOKUP, ACCELERATOR_SPECIFIC_LOOKUP, USER_EXPERTISE_LOOKUP
+from cates import IS_REALLY_BUG_LOOKUP, USER_PERSPECTIVE_LOOKUP, DEVELOPER_PERSPECTIVE_LOOKUP, ACCELERATOR_SPECIFIC_LOOKUP, USER_EXPERTISE_LOOKUP, CONFIDENCE_LOOKUP
 from results_loader import load_categorized_results, get_categorized_urls
 
 
@@ -189,11 +189,14 @@ def parse_accelerator_specific(code):
 def parse_user_expertise(code):
     return USER_EXPERTISE_LOOKUP.get(code)
 
+def parse_confidence(code):
+    return CONFIDENCE_LOOKUP.get(code)
+
 
 def parse_llm_output(text):
-    # Try to find pattern like "1.x, 2.x, 3.x, 4.x, 5.x" anywhere in the text
+    # Try to find pattern like "1.x, 2.x, 3.x, 4.x, 5.x, 6.x" anywhere in the text
     import re
-    pattern = r'([1-5]\.[a-k]),\s*([1-5]\.[a-k]),\s*([1-5]\.[a-k]),\s*([1-5]\.[a-k]),\s*([1-5]\.[a-k])'
+    pattern = r'([1-6]\.[a-k]),\s*([1-6]\.[a-k]),\s*([1-6]\.[a-k]),\s*([1-6]\.[a-k]),\s*([1-6]\.[a-k]),\s*([1-6]\.[a-k])'
     match = re.search(pattern, text)
     
     if match:
@@ -201,8 +204,8 @@ def parse_llm_output(text):
     else:
         # Fallback to original parsing
         xs = [x.strip() for x in text.split(',')]
-        if len(xs) != 5:
-            return Err(f"Expected 5 comma-separated values, got {len(xs)}. Original response: {text[:200]}...")
+        if len(xs) != 6:
+            return Err(f"Expected 6 comma-separated values, got {len(xs)}. Original response: {text[:200]}...")
     
     if xs[0] not in IS_REALLY_BUG_LOOKUP:
         return Err(f"Invalid is_really_bug code: {xs[0]}. Original response: {text}")
@@ -219,7 +222,10 @@ def parse_llm_output(text):
     if xs[4] not in USER_EXPERTISE_LOOKUP:
         return Err(f"Invalid user_expertise code: {xs[4]}. Original response: {text}")
     
-    return Ok((parse_is_really_bug(xs[0]), parse_user_perspective(xs[1]), parse_developer_perspective(xs[2]), parse_accelerator_specific(xs[3]), parse_user_expertise(xs[4])))
+    if xs[5] not in CONFIDENCE_LOOKUP:
+        return Err(f"Invalid confidence code: {xs[5]}. Original response: {text}")
+    
+    return Ok((parse_is_really_bug(xs[0]), parse_user_perspective(xs[1]), parse_developer_perspective(xs[2]), parse_accelerator_specific(xs[3]), parse_user_expertise(xs[4]), parse_confidence(xs[5])))
 
 def ask_gemini_2_5_flash(issue):
     api_key = os.getenv("GEMINI_API_KEY")
@@ -407,7 +413,7 @@ def ask_local_ollama(issue):
             else:
                 # Try to extract the categorization pattern from within the thinking
                 import re as regex_module
-                pattern = r'([1-5]\.[a-k]),\s*([1-5]\.[a-k]),\s*([1-5]\.[a-k]),\s*([1-5]\.[a-k]),\s*([1-5]\.[a-k])'
+                pattern = r'([1-6]\.[a-k]),\s*([1-6]\.[a-k]),\s*([1-6]\.[a-k]),\s*([1-6]\.[a-k]),\s*([1-6]\.[a-k]),\s*([1-6]\.[a-k])'
                 match = regex_module.search(pattern, text)
                 if match:
                     text = ', '.join(match.groups())
@@ -552,7 +558,7 @@ def main():
         
         # Unwrap the successful result
         categorization = result.unwrap()
-        issues_categorized.append((title, url, categorization[0], categorization[1], categorization[2], categorization[3], categorization[4]))
+        issues_categorized.append((title, url, categorization[0], categorization[1], categorization[2], categorization[3], categorization[4], categorization[5]))
         for item in categorization:
             print(" - " + item.value)
         print()
@@ -572,7 +578,8 @@ def main():
                 "user_perspective": item[3].value if item[3] else None,
                 "developer_perspective": item[4].value if item[4] else None,
                 "accelerator_specific": item[5].value if item[5] else None,
-                "user_expertise": item[6].value if item[6] else None
+                "user_expertise": item[6].value if item[6] else None,
+                "confidence": item[7].value if item[7] else None
             })
         
         with open(output_filename, 'w') as f:
