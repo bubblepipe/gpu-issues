@@ -57,9 +57,6 @@ Note: If multiple categories apply, choose the most specific one.
 For example, if it's both a "performance regression" and "GPU-specific", 
 prioritize the root cause category.
 
-Expected output format: "1.d, 2.f, 3.c, 4.a, 5.b"
-Only include the letter codes, no explanations.
-
 When analyzing the issue, consider:
 - Error messages and stack traces
 - Hardware/software environment mentioned
@@ -67,5 +64,10 @@ When analyzing the issue, consider:
 - Discussion in comments
 - Pull request or fix details (if linked)
 
-The url to the issue is: 
+Elaborate your choice and sumarize your conlusion in the last line. 
+Expected last line format: "1.d, 2.f, 3.c, 4.a, 5.b, 6.a"
+Only include the letter codes, with comma seperated
+put all of your explanations before the last line. 
+
+The url to the issue is given below, please fetch the webpage: 
 """

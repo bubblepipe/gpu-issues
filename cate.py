@@ -14,9 +14,9 @@ from results_loader import load_categorized_results, get_categorized_urls
 # Configuration settings
 # USE_CATEGORIZED_FILE = True # Set to False to select fresh issues
 USE_CATEGORIZED_FILE = False  # Set to False to select fresh issues
-NUM_PER_FRAMEWORK = 20
-# LLM_CHOICE = "ollama"  # Options: "gemini", "ollama", "opus"
-LLM_CHOICE = "gemini"  # Options: "gemini", "ollama", "opus"
+NUM_PER_FRAMEWORK = 5
+# LLM_CHOICE = "ollama"  # Options: "gemini", "gemini-pro", "ollama", "opus"
+LLM_CHOICE = "opus"  # Options: "gemini", "gemini-pro", "ollama", "opus"
 OLLAMA_MODEL = "qwen3:235b"  # Change this to match your available model
 CATEGORIZED_FILE_PATH = '/Users/bubblepipe/repo/gpu-bugs/categorized_issues_20250811_144744.json'
 
@@ -194,38 +194,106 @@ def parse_confidence(code):
 
 
 def parse_llm_output(text):
-    # Try to find pattern like "1.x, 2.x, 3.x, 4.x, 5.x, 6.x" anywhere in the text
+    # Split response by lines and get the last non-empty line
+    lines = text.strip().split('\n')
+    last_line = None
+    
+    # Find the last non-empty line
+    for line in reversed(lines):
+        if line.strip():
+            last_line = line.strip()
+            break
+    
+    if not last_line:
+        print(f"DEBUG: No non-empty lines found in response. Full response:\n{text}")
+        return Err(f"No non-empty lines found in response")
+    
+    # Try to find pattern in the last line
     import re
     pattern = r'([1-6]\.[a-k]),\s*([1-6]\.[a-k]),\s*([1-6]\.[a-k]),\s*([1-6]\.[a-k]),\s*([1-6]\.[a-k]),\s*([1-6]\.[a-k])'
-    match = re.search(pattern, text)
+    match = re.search(pattern, last_line)
     
     if match:
         xs = list(match.groups())
     else:
-        # Fallback to original parsing
-        xs = [x.strip() for x in text.split(',')]
+        # If pattern not found in last line, try splitting by comma
+        xs = [x.strip() for x in last_line.split(',')]
         if len(xs) != 6:
-            return Err(f"Expected 6 comma-separated values, got {len(xs)}. Original response: {text[:200]}...")
+            # Log the full response for debugging
+            print(f"DEBUG: Failed to parse LLM output. Last line: {last_line}")
+            print(f"DEBUG: Full response:\n{text}")
+            return Err(f"Expected 6 comma-separated values in last line, got {len(xs)}. Last line: {last_line}")
     
     if xs[0] not in IS_REALLY_BUG_LOOKUP:
-        return Err(f"Invalid is_really_bug code: {xs[0]}. Original response: {text}")
+        print(f"DEBUG: Invalid is_really_bug code: {xs[0]}")
+        print(f"DEBUG: Full response:\n{text}")
+        return Err(f"Invalid is_really_bug code: {xs[0]}. Last line: {last_line}")
     
     if xs[1] not in USER_PERSPECTIVE_LOOKUP:
-        return Err(f"Invalid user_perspective code: {xs[1]}. Original response: {text}")
+        print(f"DEBUG: Invalid user_perspective code: {xs[1]}")
+        print(f"DEBUG: Full response:\n{text}")
+        return Err(f"Invalid user_perspective code: {xs[1]}. Last line: {last_line}")
     
     if xs[2] not in DEVELOPER_PERSPECTIVE_LOOKUP:
-        return Err(f"Invalid developer_perspective code: {xs[2]}. Original response: {text}")
+        print(f"DEBUG: Invalid developer_perspective code: {xs[2]}")
+        print(f"DEBUG: Full response:\n{text}")
+        return Err(f"Invalid developer_perspective code: {xs[2]}. Last line: {last_line}")
     
     if xs[3] not in ACCELERATOR_SPECIFIC_LOOKUP:
-        return Err(f"Invalid accelerator_specific code: {xs[3]}. Original response: {text}")
+        print(f"DEBUG: Invalid accelerator_specific code: {xs[3]}")
+        print(f"DEBUG: Full response:\n{text}")
+        return Err(f"Invalid accelerator_specific code: {xs[3]}. Last line: {last_line}")
     
     if xs[4] not in USER_EXPERTISE_LOOKUP:
-        return Err(f"Invalid user_expertise code: {xs[4]}. Original response: {text}")
+        print(f"DEBUG: Invalid user_expertise code: {xs[4]}")
+        print(f"DEBUG: Full response:\n{text}")
+        return Err(f"Invalid user_expertise code: {xs[4]}. Last line: {last_line}")
     
     if xs[5] not in CONFIDENCE_LOOKUP:
-        return Err(f"Invalid confidence code: {xs[5]}. Original response: {text}")
+        print(f"DEBUG: Invalid confidence code: {xs[5]}")
+        print(f"DEBUG: Full response:\n{text}")
+        return Err(f"Invalid confidence code: {xs[5]}. Last line: {last_line}")
     
     return Ok((parse_is_really_bug(xs[0]), parse_user_perspective(xs[1]), parse_developer_perspective(xs[2]), parse_accelerator_specific(xs[3]), parse_user_expertise(xs[4]), parse_confidence(xs[5])))
+
+def ask_gemini_2_5_pro(issue):
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        return Err("GEMINI_API_KEY environment variable not set")
+    
+    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent"
+    headers = {
+        "Content-Type": "application/json",
+        "X-goog-api-key": api_key
+    }
+    data = {
+        "contents": [
+            {
+                "parts": [ { "text": f"{BUG_CATEGORIZATION_PROMPT}{issue['html_url']}" } ]
+            }
+        ]
+    }
+    
+    try:
+        response = requests.post(url, headers=headers, json=data)
+        response.raise_for_status()  # Raise an error for bad status codes
+        
+        # Extract the text from the response
+        json_response = response.json()
+        text = json_response['candidates'][0]['content']['parts'][0]['text']
+        
+        # Parse the LLM output and return the Result
+        return parse_llm_output(text)
+        
+    except requests.exceptions.RequestException as e:
+        return Err(f"Network error calling Gemini Pro API: {e}")
+    except (IndexError, KeyError) as e:
+        return Err(f"Error parsing response from Gemini Pro API: {e}. Response: {response.text if 'response' in locals() else 'No response'}")
+    except ValueError as e:
+        return Err(f"Invalid JSON response from Gemini Pro API: {e}")
+    except Exception as e:
+        return Err(f"Unexpected error with Gemini Pro API: {e}")
+
 
 def ask_gemini_2_5_flash(issue):
     api_key = os.getenv("GEMINI_API_KEY")
@@ -300,17 +368,11 @@ def ask_local_ollama(issue):
             else:
                 issue_content += "(Empty comment)\n"
     
-    # Modified prompt to be more explicit about output format
-    modified_prompt = BUG_CATEGORIZATION_PROMPT.replace(
-        "please reply with only the code representing your option",
-        "IMPORTANT: Reply with ONLY the codes, no explanation or reasoning. Just output exactly 5 codes separated by commas"
-    )
+    # Combine prompt with issue content (no modification needed since prompt now asks for reasoning)
+    full_prompt = BUG_CATEGORIZATION_PROMPT + "\n\nISSUE CONTENT:\n" + issue_content
     
-    # Combine prompt with issue content
-    full_prompt = modified_prompt + "\n\nISSUE CONTENT:\n" + issue_content
-    
-    # Add system prompt to skip reasoning
-    system_message = "You must respond with ONLY the categorization codes in the format: 1.x, 2.x, 3.x, 4.x, 5.x. Do not include any reasoning, thinking, or explanation."
+    # Update system message to encourage reasoning before the final answer
+    system_message = "Please analyze the issue thoroughly, provide your reasoning, and put the categorization codes in the last line in the format: 1.x, 2.x, 3.x, 4.x, 5.x, 6.x"
     
     # Prepare JSON data for curl
     data = {
@@ -401,30 +463,8 @@ def ask_local_ollama(issue):
             # Remove trailing backslashes
             text = text.rstrip('\\')
         
-        # Check if the response contains thinking tags and extract the answer
-        if '<think>' in text and '</think>' in text:
-            # Extract content after the thinking tags
-            think_end = text.find('</think>')
-            if think_end != -1:
-                # Get everything after the closing think tag
-                answer = text[think_end + 8:].strip()
-                if answer:
-                    text = answer
-            else:
-                # Try to extract the categorization pattern from within the thinking
-                import re as regex_module
-                pattern = r'([1-6]\.[a-k]),\s*([1-6]\.[a-k]),\s*([1-6]\.[a-k]),\s*([1-6]\.[a-k]),\s*([1-6]\.[a-k]),\s*([1-6]\.[a-k])'
-                match = regex_module.search(pattern, text)
-                if match:
-                    text = ', '.join(match.groups())
-        
-        # Also handle cases where answer might be wrapped in other tags
-        elif '<answer>' in text and '</answer>' in text:
-            start = text.find('<answer>') + 8
-            end = text.find('</answer>')
-            if start > 7 and end > start:
-                text = text[start:end].strip()
-                print(f"DEBUG: Extracted from answer tags: {text}")
+        # No special tag handling needed - the parse_llm_output function will extract the last line
+        # Just pass the full text to the parser
         
         # Parse the LLM output and return the Result
         return parse_llm_output(text)
@@ -473,7 +513,7 @@ def ask_opus_4(issue):
         "content-type": "application/json"
     }
     data = {
-        "model": "claude-opus-20240229",
+        "model": "claude-opus-4-1-20250805",
         "max_tokens": 1024,
         "messages": [
             {
@@ -542,12 +582,14 @@ def main():
         # Choose which LLM to use based on configuration
         if LLM_CHOICE == "gemini":
             result = ask_gemini_2_5_flash(issue)
+        elif LLM_CHOICE == "gemini-pro":
+            result = ask_gemini_2_5_pro(issue)
         elif LLM_CHOICE == "ollama":
             result = ask_local_ollama(issue)
         elif LLM_CHOICE == "opus":
             result = ask_opus_4(issue)
         else:
-            result = ask_gemini_2_5_flash(issue)  # Default to Gemini
+            result = ask_gemini_2_5_flash(issue)  # Default to Gemini Flash
             
         if result.is_err():
             error_msg = result.unwrap_err()

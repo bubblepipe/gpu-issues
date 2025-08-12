@@ -143,7 +143,7 @@ def plot_platform_distributions(categorized_issues, title="", ax=None):
             
             if count > 0:
                 # Add full text label on top (vertical, black) with left anchor
-                ax.text(bar_position, count + 1.5, display_text,
+                ax.text(bar_position, count + 0.5, display_text,
                        ha='left', va='bottom', fontsize=6, fontweight='semibold', 
                        color='black', rotation=90)
                 # Add count value below the label
