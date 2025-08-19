@@ -5,6 +5,7 @@ import requests
 import os
 import sys
 import time
+import re
 from result import Ok, Err, Result
 from prompts import BUG_CATEGORIZATION_PROMPT
 from cates import IS_REALLY_BUG_LOOKUP, USER_PERSPECTIVE_LOOKUP, DEVELOPER_PERSPECTIVE_LOOKUP, ACCELERATOR_SPECIFIC_LOOKUP, USER_EXPERTISE_LOOKUP
@@ -250,6 +251,7 @@ def parse_llm_output(text):
         return Err(f"Invalid user_expertise code: {xs[4]}. Last line: {last_line}")
     
     return Ok((parse_is_really_bug(xs[0]), parse_user_perspective(xs[1]), parse_developer_perspective(xs[2]), parse_accelerator_specific(xs[3]), parse_user_expertise(xs[4])))
+
 
 
 def prepare_full_prompt(issue):
@@ -504,7 +506,7 @@ def ask_local_ollama(issue):
             pass
         return Err(f"Unexpected error with remote Ollama API: {e}")
 
-def ask_dummy(issue):
+def ask_dummy(_):
     """Return a dummy response for testing without API calls."""
     # Simulate some thinking/reasoning
     dummy_response = """Looking at this issue, I need to analyze several aspects:
@@ -521,7 +523,7 @@ Based on my analysis:
     # Parse and return the dummy response
     return parse_llm_output(dummy_response)
 
-def ask_sonnet_4(issue):
+def ask_sonnet_4(_):
     return None
 
 def ask_opus_4(issue):
@@ -531,6 +533,8 @@ def ask_opus_4(issue):
     
     # Prepare the full prompt with issue content
     full_prompt = prepare_full_prompt(issue)
+    print(full_prompt)
+    # # exit(0)
     url = "https://api.anthropic.com/v1/messages"
     headers = {
         "x-api-key": api_key,
@@ -549,14 +553,15 @@ def ask_opus_4(issue):
     }
     
     try:
-        response = requests.post(url, headers=headers, json=data)
-        response.raise_for_status()
+    #     response = requests.post(url, headers=headers, json=data)
+    #     response.raise_for_status()
         
-        json_response = response.json()
-        text = json_response["content"][0]["text"]
-        print(text)
+    #     json_response = response.json()
+    #     text = json_response["content"][0]["text"]
+    #     print(text)
         print()
 
+        return parse_llm_output("")
         return parse_llm_output(text)
         
     except requests.exceptions.RequestException as e:

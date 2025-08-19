@@ -14,6 +14,7 @@ Determine if this is truly a bug:
 - **1.c**: User error - Functionality works correctly but user misunderstood the API/documentation
 - **1.d**: Confirmed bug - Clear defect in implementation
 - **1.e**: Documentation bug - Code works correctly but documentation is incorrect or misleading
+- **1.f**: Don't know: the bug report does not contain enough data to answer this question
 
 ### 2. User-Visible Symptoms
 Identify the primary symptom experienced by framework users:
@@ -24,6 +25,8 @@ Identify the primary symptom experienced by framework users:
 - **2.e**: Memory issues - Unexpected memory consumption or leaks
 - **2.f**: API/Interface confusion - Confusing, inconsistent, or unexpected API behavior
 - **2.g**: Not applicable - Not a bug
+- **2.h**: Don't know: the bug report does not contain enough data to answer this question
+- **2.i**: Other
 
 ### 3. Root Cause Analysis
 From the framework developer's perspective, identify the underlying cause:
@@ -33,6 +36,7 @@ From the framework developer's perspective, identify the underlying cause:
 - **3.d**: Configuration error - Wrong algorithm selection, precision settings, library versions, or environment setup
 - **3.e**: Unknown - Root cause cannot be determined from available information
 - **3.f**: Not applicable - Not a bug
+- **3.g**: Other
 
 ### 4. Resolution Status
 How was the issue addressed:
@@ -40,6 +44,7 @@ How was the issue addressed:
 - **4.b**: Workaround provided - Alternative solution suggested without fixing root cause
 - **4.c**: Not fixed - Issue remains open or was closed without resolution
 - **4.d**: Not applicable - Not a bug
+- **4.e**: The bug report does not contain enough data to answer this question
 
 ### 5. Platform Specificity
 Determine if the bug is platform-dependent:
