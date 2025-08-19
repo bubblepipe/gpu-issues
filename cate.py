@@ -15,8 +15,8 @@ from results_loader import load_categorized_results, get_categorized_urls
 # USE_CATEGORIZED_FILE = True # Set to False to select fresh issues
 USE_CATEGORIZED_FILE = False  # Set to False to select fresh issues
 NUM_PER_FRAMEWORK = 5
-# LLM_CHOICE = "ollama"  # Options: "gemini", "gemini-pro", "ollama", "opus"
-LLM_CHOICE = "opus"  # Options: "gemini", "gemini-pro", "ollama", "opus"
+# LLM_CHOICE = "ollama"  # Options: "gemini", "gemini-pro", "ollama", "opus", "dummy"
+LLM_CHOICE = "dummy"  # Options: "gemini", "gemini-pro", "ollama", "opus", "dummy"
 OLLAMA_MODEL = "qwen3:235b"  # Change this to match your available model
 CATEGORIZED_FILE_PATH = '/Users/bubblepipe/repo/gpu-bugs/categorized_issues_20250811_144744.json'
 
@@ -498,6 +498,24 @@ def ask_local_ollama(issue):
             pass
         return Err(f"Unexpected error with remote Ollama API: {e}")
 
+def ask_dummy(issue):
+    """Return a dummy response for testing without API calls."""
+    # Simulate some thinking/reasoning
+    dummy_response = """Looking at this issue, I need to analyze several aspects:
+
+1. Bug classification: This appears to be a real bug based on the title.
+2. User perspective: Seems like a general issue that users might encounter.
+3. Developer perspective: Would likely require some code changes.
+4. Platform specificity: Not enough information to determine platform specificity.
+5. User expertise: Could affect intermediate users.
+6. Confidence: Medium confidence in this categorization.
+
+Based on my analysis:
+1.d, 2.j, 3.b, 4.g, 5.b, 6.b"""
+    
+    # Parse and return the dummy response
+    return parse_llm_output(dummy_response)
+
 def ask_sonnet_4(issue):
     return None
 
@@ -588,6 +606,8 @@ def main():
             result = ask_local_ollama(issue)
         elif LLM_CHOICE == "opus":
             result = ask_opus_4(issue)
+        elif LLM_CHOICE == "dummy":
+            result = ask_dummy(issue)
         else:
             result = ask_gemini_2_5_flash(issue)  # Default to Gemini Flash
             
@@ -601,8 +621,8 @@ def main():
         # Unwrap the successful result
         categorization = result.unwrap()
         issues_categorized.append((title, url, categorization[0], categorization[1], categorization[2], categorization[3], categorization[4], categorization[5]))
-        for item in categorization:
-            print(" - " + item.value)
+        # for item in categorization:
+        #     print(" - " + item.value)
         print()
     
     # Save categorized issues to a file
