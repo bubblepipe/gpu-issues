@@ -15,8 +15,11 @@ from results_loader import load_categorized_results, get_categorized_urls
 USE_CATEGORIZED_FILE = True # Set to False to select fresh issues
 # USE_CATEGORIZED_FILE = False  # Set to False to select fresh issues
 NUM_PER_FRAMEWORK = 5
-# LLM_CHOICE = "ollama"  # Options: "gemini", "gemini-pro", "ollama", "opus", "dummy"
-LLM_CHOICE = "gemini-pro"  # Options: "gemini", "gemini-pro", "ollama", "opus", "dummy"
+
+# Options: "gemini", "gemini-pro", "ollama", "opus", "dummy"
+# LLM_CHOICE = "gemini-pro"  
+LLM_CHOICE = "opus"  
+
 OLLAMA_MODEL = "qwen3:235b"  # Change this to match your available model
 CATEGORIZED_FILE_PATH = '/Users/bubblepipe/repo/gpu-bugs/selected25.json'
 
@@ -248,10 +251,45 @@ def parse_llm_output(text):
     
     return Ok((parse_is_really_bug(xs[0]), parse_user_perspective(xs[1]), parse_developer_perspective(xs[2]), parse_accelerator_specific(xs[3]), parse_user_expertise(xs[4])))
 
+
+def prepare_full_prompt(issue):
+    """Prepare the full prompt with issue content including title, labels, body, and comments."""
+    issue_content = f"Title: {issue['title']}\n"
+    issue_content += f"URL: {issue['html_url']}\n"
+    
+    # Add labels
+    labels = [label['name'] for label in issue.get('labels', [])]
+    if labels:
+        issue_content += f"Labels: {', '.join(labels)}\n"
+    
+    issue_content += "\nIssue Description:\n"
+    if issue.get('body'):
+        issue_content += issue['body'] + "\n"
+    else:
+        issue_content += "(No description provided)\n"
+    
+    # Add comments if available
+    if 'comments_data' in issue and issue['comments_data']:
+        issue_content += f"\n--- Comments ({len(issue['comments_data'])}) ---\n"
+        for i, comment in enumerate(issue['comments_data'], 1):
+            issue_content += f"\nComment {i} by {comment.get('user', {}).get('login', 'Unknown')} at {comment.get('created_at', 'Unknown')}:\n"
+            if comment.get('body'):
+                issue_content += comment['body'] + "\n"
+            else:
+                issue_content += "(Empty comment)\n"
+    
+    # Combine prompt with issue content
+    full_prompt = BUG_CATEGORIZATION_PROMPT + "\n\nISSUE CONTENT:\n" + issue_content
+    return full_prompt
+
+
 def ask_gemini_2_5_pro(issue):
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         return Err("GEMINI_API_KEY environment variable not set")
+    
+    # Prepare the full prompt with issue content
+    full_prompt = prepare_full_prompt(issue)
     
     url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent"
     headers = {
@@ -261,7 +299,7 @@ def ask_gemini_2_5_pro(issue):
     data = {
         "contents": [
             {
-                "parts": [ { "text": f"{BUG_CATEGORIZATION_PROMPT}{issue['html_url']}" } ]
+                "parts": [ { "text": full_prompt } ]
             }
         ]
     }
@@ -332,38 +370,12 @@ def ask_local_ollama(issue):
     """Query Ollama API on remote h100 server with full issue content including comments."""
     import subprocess
     import json as json_module
-    import re
     
     ollama_url = "http://localhost:11434/api/generate"
     model = OLLAMA_MODEL  # Use the configured model
     
-    # Build the full issue content including body and comments
-    issue_content = f"Title: {issue['title']}\n"
-    issue_content += f"URL: {issue['html_url']}\n"
-    
-    # Add labels
-    labels = [label['name'] for label in issue.get('labels', [])]
-    if labels:
-        issue_content += f"Labels: {', '.join(labels)}\n"
-    
-    issue_content += "\nIssue Description:\n"
-    if issue.get('body'):
-        issue_content += issue['body'] + "\n"
-    else:
-        issue_content += "(No description provided)\n"
-    
-    # Add comments if available
-    if 'comments_data' in issue and issue['comments_data']:
-        issue_content += f"\n--- Comments ({len(issue['comments_data'])}) ---\n"
-        for i, comment in enumerate(issue['comments_data'], 1):
-            issue_content += f"\nComment {i} by {comment.get('user', {}).get('login', 'Unknown')} at {comment.get('created_at', 'Unknown')}:\n"
-            if comment.get('body'):
-                issue_content += comment['body'] + "\n"
-            else:
-                issue_content += "(Empty comment)\n"
-    
-    # Combine prompt with issue content (no modification needed since prompt now asks for reasoning)
-    full_prompt = BUG_CATEGORIZATION_PROMPT + "\n\nISSUE CONTENT:\n" + issue_content
+    # Prepare the full prompt with issue content
+    full_prompt = prepare_full_prompt(issue)
     
     # Update system message to encourage reasoning before the final answer
     system_message = "Please analyze the issue thoroughly, provide your reasoning, and put the categorization codes in the last line in the format: 1.x, 2.x, 3.x, 4.x, 5.x"
@@ -517,6 +529,8 @@ def ask_opus_4(issue):
     if not api_key:
         return Err("ANTHROPIC_API_KEY environment variable not set")
     
+    # Prepare the full prompt with issue content
+    full_prompt = prepare_full_prompt(issue)
     url = "https://api.anthropic.com/v1/messages"
     headers = {
         "x-api-key": api_key,
@@ -529,7 +543,7 @@ def ask_opus_4(issue):
         "messages": [
             {
                 "role": "user",
-                "content": f"{BUG_CATEGORIZATION_PROMPT}{issue['html_url']}"
+                "content": full_prompt
             }
         ]
     }

@@ -50,7 +50,8 @@ Determine if the bug is platform-dependent:
 
 ## Analysis Instructions
 
-1. **For duplicate issues**: If the issue is marked as duplicate, locate and analyze the original issue instead.
+1. **For duplicate issues**: If the issue is marked as duplicate, locate and 
+analyze the original issue instead.
 
 2. **Consider all available information**:
    - Issue title and description
@@ -61,15 +62,21 @@ Determine if the bug is platform-dependent:
    - Linked pull requests or commits
    - Any test results or benchmarks
 
-3. **Prioritization rule**: When multiple categories could apply, select the most specific and fundamental one. For example, if an issue is both a "performance problem" and "GPU-specific", prioritize based on the root cause.
+3. **Prioritization rule**: When multiple categories could apply, select the 
+most specific and fundamental one. For example, if an issue is both a 
+"performance problem" and "GPU-specific", prioritize based on the root cause.
 
 4. **Output format**:
-   - First, provide a detailed analysis explaining your reasoning for each category
+   - First, provide a detailed analysis explaining your reasoning for each 
+     category
    - Include relevant quotes or evidence from the issue
    - End with a summary line containing only the letter codes
 
 **Expected final line format**: `1.d, 2.c, 3.b, 4.a, 5.a`
 (Use only letter codes, comma-separated, no additional text)
 
-Please fetch and analyze the issue at the following URL:
+The content of the issue is as follows. Every link mentioned in the issue is 
+attached at the end of the prompt for your reference. Please analyze the issue 
+and categorize it according to the framework above.
+
 """
