@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from collections import Counter, defaultdict
 from results_loader import load_categorized_results, load_categorized_json_files
-from cates import IsReallyBug, UserPerspective, DeveloperPerspective, AcceleratorSpecific, UserExpertise, Confidence
+from cates import IsReallyBug, UserPerspective, DeveloperPerspective, AcceleratorSpecific, UserExpertise
 
 # Set style for better-looking plots
 plt.style.use('seaborn-v0_8-darkgrid')
@@ -44,26 +44,23 @@ def plot_platform_distributions(categorized_issues, title="", ax=None):
     developer_perspective = [issue[4] for issue in categorized_issues if issue[4] is not None]
     accelerator_specific = [issue[5] for issue in categorized_issues if issue[5] is not None]
     user_expertise = [issue[6] for issue in categorized_issues if issue[6] is not None]
-    confidence = [issue[7] for issue in categorized_issues if len(issue) > 7 and issue[7] is not None]
     
     # Count each category
     categories = {
-        'Is Bug': Counter(is_really_bug),
-        'User View': Counter(user_perspective),
-        'Dev View': Counter(developer_perspective),
-        'Platform': Counter(accelerator_specific),
-        'Expertise': Counter(user_expertise),
-        'Confidence': Counter(confidence) if confidence else Counter()
+        'Bug Class': Counter(is_really_bug),
+        'User Symptom': Counter(user_perspective),
+        'Root Cause': Counter(developer_perspective),
+        'Resolution': Counter(accelerator_specific),
+        'Platform': Counter(user_expertise)
     }
     
     # Prepare data for grouped bar plot with subtitles
     category_info = {
-        'Is Bug': 'Bug classification',
-        'User View': "User's perspective",
-        'Dev View': "Developer's approach",
-        'Platform': 'Hardware specificity',
-        'Expertise': 'User skill level',
-        'Confidence': 'Categorization confidence'
+        'Bug Class': 'Bug classification',
+        'User Symptom': 'User-visible symptoms',
+        'Root Cause': 'Root cause analysis',
+        'Resolution': 'Resolution status',
+        'Platform': 'Platform specificity'
     }
     category_names = list(categories.keys())
     
@@ -71,24 +68,22 @@ def plot_platform_distributions(categorized_issues, title="", ax=None):
     # Use the maximum number of enum values across all categories
     max_possible_items = max(
         len(list(IsReallyBug)),        # 5 items
-        len(list(UserPerspective)),     # 11 items
-        len(list(DeveloperPerspective)), # 11 items
-        len(list(AcceleratorSpecific)), # 8 items
-        len(list(UserExpertise)),      # 4 items
-        len(list(Confidence)) if confidence else 3  # 3 items
-    )  # This will be 11 (UserPerspective has the most)
+        len(list(UserPerspective)),     # 7 items
+        len(list(DeveloperPerspective)), # 6 items
+        len(list(AcceleratorSpecific)), # 4 items
+        len(list(UserExpertise))       # 4 items
+    )  # This will be 7 (UserPerspective has the most)
     bar_width = min(0.15, 0.8 / max_possible_items)  # Consistent bar width across all plots
     x_pos = np.arange(len(category_names))
     
     # Define extended color palettes for each category type
     # Using colorblind-friendly and visually appealing colors with gradients
     category_palettes = {
-        'Is Bug': ['#1e5f8e', '#2E86AB', '#5EB1BF', '#84D2F6', '#A4C3D2', '#CFE5E7'],  # Blues (6 colors for 5 options)
-        'User View': ['#2d6a4f', '#40916c', '#52B788', '#74C69D', '#95D5B2', '#B7E4C7', '#D8F3DC', '#e5f5e0', '#c7e9c0', '#a1d99b', '#74c476', '#41ab5d'],  # Greens (12 colors for 11 options)
-        'Dev View': ['#d84a05', '#F77F00', '#F9A03F', '#FCBF49', '#FFD166', '#FFE5A5', '#ffe8c8', '#ffd4a3', '#ffc07e', '#ffb85a', '#ffa836'],  # Oranges (11 colors for 11 options)
-        'Platform': ['#a61e4d', '#D62828', '#F94144', '#F3722C', '#F8961E', '#F9C74F', '#ffd166', '#ffe169'],  # Reds to Yellows (8 colors for 8 options)
-        'Expertise': ['#5b0e8c', '#7209B7', '#9D4EDD', '#B298DC', '#C77DFF'],  # Purples (5 colors for 4 options)
-        'Confidence': ['#0d6efd', '#6c757d', '#dc3545']  # Blue, Gray, Red (3 colors for confidence levels)
+        'Bug Class': ['#1e5f8e', '#2E86AB', '#5EB1BF', '#84D2F6', '#A4C3D2'],  # Blues (5 colors for 5 options)
+        'User Symptom': ['#2d6a4f', '#40916c', '#52B788', '#74C69D', '#95D5B2', '#B7E4C7', '#D8F3DC'],  # Greens (7 colors for 7 options)
+        'Root Cause': ['#d84a05', '#F77F00', '#F9A03F', '#FCBF49', '#FFD166', '#FFE5A5'],  # Oranges (6 colors for 6 options)
+        'Resolution': ['#a61e4d', '#D62828', '#F94144', '#F3722C'],  # Reds (4 colors for 4 options)
+        'Platform': ['#5b0e8c', '#7209B7', '#9D4EDD', '#B298DC']  # Purples (4 colors for 4 options)
     }
     
     # Track all unique values across categories for legend
@@ -101,12 +96,11 @@ def plot_platform_distributions(categorized_issues, title="", ax=None):
     
     # Define all possible enum values for each category in their original order
     all_enums = {
-        'Is Bug': list(IsReallyBug),
-        'User View': list(UserPerspective),
-        'Dev View': list(DeveloperPerspective),
-        'Platform': list(AcceleratorSpecific),
-        'Expertise': list(UserExpertise),
-        'Confidence': list(Confidence) if confidence else []
+        'Bug Class': list(IsReallyBug),
+        'User Symptom': list(UserPerspective),
+        'Root Cause': list(DeveloperPerspective),
+        'Resolution': list(AcceleratorSpecific),
+        'Platform': list(UserExpertise)
     }
     
     for i, (cat_name, cat_counts) in enumerate(categories.items()):
@@ -227,7 +221,7 @@ def plot_definitely_bugs_distributions(categorized_issues, save_path="definitely
     """
     # Filter for only definitely bugs (1.d)
     definitely_bugs = [issue for issue in categorized_issues 
-                      if issue[2] is not None and issue[2] == IsReallyBug.DEFINITELY_YES]
+                      if issue[2] is not None and issue[2] == IsReallyBug.CONFIRMED_BUG]
     
     if not definitely_bugs:
         print("No issues categorized as 'definitely a bug' (1.d) found.")
@@ -335,10 +329,10 @@ def plot_expertise_filtered_distributions(categorized_issues, expertise_level, s
 
 def plot_bug_distributions(categorized_issues, save_path=None):
     """
-    Create bar plots showing the distribution of all six categorization dimensions.
+    Create bar plots showing the distribution of all five categorization dimensions.
     
     Args:
-        categorized_issues: List of tuples (title, url, is_really_bug, user_perspective, developer_perspective, accelerator_specific, user_expertise, confidence)
+        categorized_issues: List of tuples (title, url, is_really_bug, user_perspective, developer_perspective, accelerator_specific, user_expertise)
         save_path: Optional path to save the figure
     """
     # Extract the categorizations
@@ -347,7 +341,6 @@ def plot_bug_distributions(categorized_issues, save_path=None):
     developer_perspective = [issue[4] for issue in categorized_issues if issue[4] is not None]
     accelerator_specific = [issue[5] for issue in categorized_issues if issue[5] is not None]
     user_expertise = [issue[6] for issue in categorized_issues if issue[6] is not None]
-    confidence = [issue[7] for issue in categorized_issues if len(issue) > 7 and issue[7] is not None]
     
     # Create subplots - now with 6 plots (2x3 grid)
     fig, ((ax1, ax2, ax3), (ax4, ax5, ax6)) = plt.subplots(2, 3, figsize=(20, 12))
@@ -499,34 +492,8 @@ def plot_bug_distributions(categorized_issues, save_path=None):
                     fontsize=5, color='gray', rotation=90)
             ax5.text(i, 0.1, '0', ha='center', va='bottom', fontsize=5, color='gray')
     
-    # Plot Confidence (if available)
-    if confidence:
-        confidence_counts = Counter(confidence)
-        confidence_items = list(Confidence)
-        confidence_labels = [c.name.replace('_', ' ').title() for c in confidence_items]
-        confidence_texts = [c.value[:25] + "..." if len(c.value) > 25 else c.value for c in confidence_items]
-        confidence_values = [confidence_counts.get(c, 0) for c in confidence_items]
-        
-        ax6.bar(confidence_labels, confidence_values, color='#0d6efd', edgecolor='#2D3436', linewidth=0.8, alpha=0.85)
-        ax6.set_title('Confidence Distribution', fontweight='bold', fontsize=12)
-        ax6.set_ylabel('Count')
-        ax6.tick_params(axis='x', rotation=45)
-        ax6.set_facecolor('#FAFBFC')
-        ax6.grid(axis='y', alpha=0.3, linestyle='--', linewidth=0.5)
-        
-        # Add value and text labels on bars
-        for i, (v, text) in enumerate(zip(confidence_values, confidence_texts)):
-            if v > 0:
-                ax6.text(i, v + 1.5, text, ha='left', va='bottom',
-                        fontsize=6, fontweight='semibold', color='black', rotation=90)
-                ax6.text(i, v + 0.2, str(v), ha='center', va='bottom', fontsize=6, color='black')
-            else:
-                ax6.text(i, 1.5, text, ha='left', va='bottom',
-                        fontsize=5, color='gray', rotation=90)
-                ax6.text(i, 0.1, '0', ha='center', va='bottom', fontsize=5, color='gray')
-    else:
-        # Hide the 6th subplot if no confidence data
-        ax6.axis('off')
+    # Hide the 6th subplot (we only have 5 categories now)
+    ax6.axis('off')
     
     # Adjust layout
     plt.tight_layout()
@@ -546,7 +513,7 @@ def plot_combined_heatmap(categorized_issues, save_path=None):
     Create a heatmap showing the co-occurrence of user perspective and developer perspective.
     
     Args:
-        categorized_issues: List of tuples (title, url, is_really_bug, user_perspective, developer_perspective, accelerator_specific, user_expertise, confidence)
+        categorized_issues: List of tuples (title, url, is_really_bug, user_perspective, developer_perspective, accelerator_specific, user_expertise)
         save_path: Optional path to save the figure
     """
     # Create co-occurrence matrix
@@ -611,48 +578,40 @@ def print_statistics(categorized_issues):
     total = len(categorized_issues)
     print(f"\nTotal categorized issues: {total}")
     
-    # Count by is_really_bug
+    # Count by bug classification
     bug_counts = Counter(issue[2] for issue in categorized_issues if issue[2] is not None)
-    print("\nIs Really Bug Distribution:")
+    print("\nBug Classification Distribution:")
     for bug_type, count in bug_counts.most_common():
         percentage = (count / total) * 100
         print(f"  {bug_type.name}: {count} ({percentage:.1f}%)")
     
-    # Count by user perspective
+    # Count by user-visible symptoms
     user_counts = Counter(issue[3] for issue in categorized_issues if issue[3] is not None)
-    print("\nUser Perspective Distribution:")
+    print("\nUser-Visible Symptoms Distribution:")
     for user_persp, count in user_counts.most_common():
         percentage = (count / total) * 100
         print(f"  {user_persp.name}: {count} ({percentage:.1f}%)")
     
-    # Count by developer perspective
+    # Count by root cause
     dev_counts = Counter(issue[4] for issue in categorized_issues if issue[4] is not None)
-    print("\nDeveloper Perspective Distribution:")
+    print("\nRoot Cause Distribution:")
     for dev_persp, count in dev_counts.most_common():
         percentage = (count / total) * 100
         print(f"  {dev_persp.name}: {count} ({percentage:.1f}%)")
     
-    # Count by accelerator specific
-    accel_counts = Counter(issue[5] for issue in categorized_issues if issue[5] is not None)
-    print("\nAccelerator Specific Distribution:")
-    for accel, count in accel_counts.most_common():
+    # Count by resolution status (was accelerator specific)
+    resolution_counts = Counter(issue[5] for issue in categorized_issues if issue[5] is not None)
+    print("\nResolution Status Distribution:")
+    for resolution, count in resolution_counts.most_common():
         percentage = (count / total) * 100
-        print(f"  {accel.name}: {count} ({percentage:.1f}%)")
+        print(f"  {resolution.name}: {count} ({percentage:.1f}%)")
     
-    # Count by user expertise
-    expertise_counts = Counter(issue[6] for issue in categorized_issues if issue[6] is not None)
-    print("\nUser Expertise Distribution:")
-    for expertise, count in expertise_counts.most_common():
+    # Count by platform specificity (was user expertise)
+    platform_counts = Counter(issue[6] for issue in categorized_issues if issue[6] is not None)
+    print("\nPlatform Specificity Distribution:")
+    for platform, count in platform_counts.most_common():
         percentage = (count / total) * 100
-        print(f"  {expertise.name}: {count} ({percentage:.1f}%)")
-    
-    # Count by confidence (if available)
-    confidence_counts = Counter(issue[7] for issue in categorized_issues if len(issue) > 7 and issue[7] is not None)
-    if confidence_counts:
-        print("\nConfidence Distribution:")
-        for conf, count in confidence_counts.most_common():
-            percentage = (count / total) * 100
-            print(f"  {conf.name}: {count} ({percentage:.1f}%)")
+        print(f"  {platform.name}: {count} ({percentage:.1f}%)")
 
 
 if __name__ == "__main__":
@@ -669,13 +628,7 @@ if __name__ == "__main__":
         # Create platform-specific plots for only definitely bugs (1.d)
         plot_definitely_bugs_distributions(categorized_issues, save_path="definitely_bugs_distributions.png")
         
-        # Create platform-specific plots filtered by user expertise
-        plot_expertise_filtered_distributions(categorized_issues, UserExpertise.BEGINNER, 
-                                             save_path="beginner_distributions.png")
-        plot_expertise_filtered_distributions(categorized_issues, UserExpertise.INTERMEDIATE,
-                                             save_path="intermediate_distributions.png")
-        plot_expertise_filtered_distributions(categorized_issues, UserExpertise.ADVANCED,
-                                             save_path="advanced_distributions.png")
+        # Note: Expertise filtering removed as UserExpertise now represents Platform Specificity
         
         # Also create the original detailed plots if needed
         # plot_bug_distributions(categorized_issues, save_path="bug_distributions.png")

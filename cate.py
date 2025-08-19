@@ -7,18 +7,18 @@ import sys
 import time
 from result import Ok, Err, Result
 from prompts import BUG_CATEGORIZATION_PROMPT
-from cates import IS_REALLY_BUG_LOOKUP, USER_PERSPECTIVE_LOOKUP, DEVELOPER_PERSPECTIVE_LOOKUP, ACCELERATOR_SPECIFIC_LOOKUP, USER_EXPERTISE_LOOKUP, CONFIDENCE_LOOKUP
+from cates import IS_REALLY_BUG_LOOKUP, USER_PERSPECTIVE_LOOKUP, DEVELOPER_PERSPECTIVE_LOOKUP, ACCELERATOR_SPECIFIC_LOOKUP, USER_EXPERTISE_LOOKUP
 from results_loader import load_categorized_results, get_categorized_urls
 
 
 # Configuration settings
-# USE_CATEGORIZED_FILE = True # Set to False to select fresh issues
-USE_CATEGORIZED_FILE = False  # Set to False to select fresh issues
+USE_CATEGORIZED_FILE = True # Set to False to select fresh issues
+# USE_CATEGORIZED_FILE = False  # Set to False to select fresh issues
 NUM_PER_FRAMEWORK = 5
 # LLM_CHOICE = "ollama"  # Options: "gemini", "gemini-pro", "ollama", "opus", "dummy"
-LLM_CHOICE = "dummy"  # Options: "gemini", "gemini-pro", "ollama", "opus", "dummy"
+LLM_CHOICE = "gemini-pro"  # Options: "gemini", "gemini-pro", "ollama", "opus", "dummy"
 OLLAMA_MODEL = "qwen3:235b"  # Change this to match your available model
-CATEGORIZED_FILE_PATH = '/Users/bubblepipe/repo/gpu-bugs/categorized_issues_20250811_144744.json'
+CATEGORIZED_FILE_PATH = '/Users/bubblepipe/repo/gpu-bugs/selected25.json'
 
 
 def load_issues_from_categorized_file(categorized_file_path, issue_groups):
@@ -189,9 +189,6 @@ def parse_accelerator_specific(code):
 def parse_user_expertise(code):
     return USER_EXPERTISE_LOOKUP.get(code)
 
-def parse_confidence(code):
-    return CONFIDENCE_LOOKUP.get(code)
-
 
 def parse_llm_output(text):
     # Split response by lines and get the last non-empty line
@@ -210,7 +207,7 @@ def parse_llm_output(text):
     
     # Try to find pattern in the last line
     import re
-    pattern = r'([1-6]\.[a-k]),\s*([1-6]\.[a-k]),\s*([1-6]\.[a-k]),\s*([1-6]\.[a-k]),\s*([1-6]\.[a-k]),\s*([1-6]\.[a-k])'
+    pattern = r'([1-5]\.[a-g]),\s*([1-5]\.[a-g]),\s*([1-5]\.[a-g]),\s*([1-5]\.[a-g]),\s*([1-5]\.[a-g])'
     match = re.search(pattern, last_line)
     
     if match:
@@ -218,11 +215,11 @@ def parse_llm_output(text):
     else:
         # If pattern not found in last line, try splitting by comma
         xs = [x.strip() for x in last_line.split(',')]
-        if len(xs) != 6:
+        if len(xs) != 5:
             # Log the full response for debugging
             print(f"DEBUG: Failed to parse LLM output. Last line: {last_line}")
             print(f"DEBUG: Full response:\n{text}")
-            return Err(f"Expected 6 comma-separated values in last line, got {len(xs)}. Last line: {last_line}")
+            return Err(f"Expected 5 comma-separated values in last line, got {len(xs)}. Last line: {last_line}")
     
     if xs[0] not in IS_REALLY_BUG_LOOKUP:
         print(f"DEBUG: Invalid is_really_bug code: {xs[0]}")
@@ -249,12 +246,7 @@ def parse_llm_output(text):
         print(f"DEBUG: Full response:\n{text}")
         return Err(f"Invalid user_expertise code: {xs[4]}. Last line: {last_line}")
     
-    if xs[5] not in CONFIDENCE_LOOKUP:
-        print(f"DEBUG: Invalid confidence code: {xs[5]}")
-        print(f"DEBUG: Full response:\n{text}")
-        return Err(f"Invalid confidence code: {xs[5]}. Last line: {last_line}")
-    
-    return Ok((parse_is_really_bug(xs[0]), parse_user_perspective(xs[1]), parse_developer_perspective(xs[2]), parse_accelerator_specific(xs[3]), parse_user_expertise(xs[4]), parse_confidence(xs[5])))
+    return Ok((parse_is_really_bug(xs[0]), parse_user_perspective(xs[1]), parse_developer_perspective(xs[2]), parse_accelerator_specific(xs[3]), parse_user_expertise(xs[4])))
 
 def ask_gemini_2_5_pro(issue):
     api_key = os.getenv("GEMINI_API_KEY")
@@ -281,6 +273,8 @@ def ask_gemini_2_5_pro(issue):
         # Extract the text from the response
         json_response = response.json()
         text = json_response['candidates'][0]['content']['parts'][0]['text']
+        print(text)
+        print()
         
         # Parse the LLM output and return the Result
         return parse_llm_output(text)
@@ -372,7 +366,7 @@ def ask_local_ollama(issue):
     full_prompt = BUG_CATEGORIZATION_PROMPT + "\n\nISSUE CONTENT:\n" + issue_content
     
     # Update system message to encourage reasoning before the final answer
-    system_message = "Please analyze the issue thoroughly, provide your reasoning, and put the categorization codes in the last line in the format: 1.x, 2.x, 3.x, 4.x, 5.x, 6.x"
+    system_message = "Please analyze the issue thoroughly, provide your reasoning, and put the categorization codes in the last line in the format: 1.x, 2.x, 3.x, 4.x, 5.x"
     
     # Prepare JSON data for curl
     data = {
@@ -503,15 +497,14 @@ def ask_dummy(issue):
     # Simulate some thinking/reasoning
     dummy_response = """Looking at this issue, I need to analyze several aspects:
 
-1. Bug classification: This appears to be a real bug based on the title.
-2. User perspective: Seems like a general issue that users might encounter.
-3. Developer perspective: Would likely require some code changes.
-4. Platform specificity: Not enough information to determine platform specificity.
-5. User expertise: Could affect intermediate users.
-6. Confidence: Medium confidence in this categorization.
+1. Bug classification: This appears to be a confirmed bug based on the title.
+2. User symptoms: Seems like incorrect results are being produced.
+3. Root cause: Likely missing safeguards or validation.
+4. Resolution status: Not fixed yet.
+5. Platform specificity: Universal issue.
 
 Based on my analysis:
-1.d, 2.j, 3.b, 4.g, 5.b, 6.b"""
+1.d, 2.c, 3.b, 4.c, 5.b"""
     
     # Parse and return the dummy response
     return parse_llm_output(dummy_response)
@@ -547,7 +540,9 @@ def ask_opus_4(issue):
         
         json_response = response.json()
         text = json_response["content"][0]["text"]
-        
+        print(text)
+        print()
+
         return parse_llm_output(text)
         
     except requests.exceptions.RequestException as e:
@@ -620,9 +615,9 @@ def main():
         
         # Unwrap the successful result
         categorization = result.unwrap()
-        issues_categorized.append((title, url, categorization[0], categorization[1], categorization[2], categorization[3], categorization[4], categorization[5]))
-        # for item in categorization:
-        #     print(" - " + item.value)
+        issues_categorized.append((title, url, categorization[0], categorization[1], categorization[2], categorization[3], categorization[4]))
+        for item in categorization:
+            print(" - " + item.value)
         print()
     
     # Save categorized issues to a file
@@ -640,8 +635,7 @@ def main():
                 "user_perspective": item[3].value if item[3] else None,
                 "developer_perspective": item[4].value if item[4] else None,
                 "accelerator_specific": item[5].value if item[5] else None,
-                "user_expertise": item[6].value if item[6] else None,
-                "confidence": item[7].value if item[7] else None
+                "user_expertise": item[6].value if item[6] else None
             })
         
         with open(output_filename, 'w') as f:

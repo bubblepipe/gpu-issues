@@ -3,124 +3,89 @@
 from enum import Enum
 
 
+# Question 1: Bug Classification
 class IsReallyBug(Enum):
-    NO = "1.a no"
-    SORT_OF_NO = "1.b sort of no, working as designed, but design is problematic"
-    USER_MISINTERPRET = "1.c sort of yes, but user misinterpret the api"
-    DEFINITELY_YES = "1.d really yes, definitely a bug"
-    DOCUMENTATION_BUG = "1.e documentation bug"
+    NOT_A_BUG = "1.a Not a bug"
+    DESIGN_ISSUE = "1.b Design issue"
+    USER_ERROR = "1.c User error"
+    CONFIRMED_BUG = "1.d Confirmed bug"
+    DOCUMENTATION_BUG = "1.e Documentation bug"
 
 
+# Question 2: User-Visible Symptoms  
 class UserPerspective(Enum):
-    COMPILATION_BUILD = "2.a Compilation and build system"
-    TYPE_SHAPE_INFERENCE = "2.b type system and shape inference bugs"
-    ACCELERATOR_BACKEND = "2.c accelerator and backend fragmentation"
-    DISTRIBUTION_SYNC = "2.d distribution and synchronization bugs"
-    NUMERICAL_PRECISION = "2.e numerical precision issues"
-    PERFORMANCE_REGRESSION = "2.f performance regression, unreasonable duration"
-    RESOURCE_EXHAUSTION = "2.g resource exhaustion (memory, file handles, threads)"
-    API_INTEGRATION = "2.h api / integration issues"
-    DETERMINISM_REPRODUCIBILITY = "2.i determinism / reproducibility issues"
-    OTHER = "2.j other"
-    NOT_A_BUG = "2.k not a bug, not applicable"
+    COMPILATION_FAILURE = "2.a Compilation failure"
+    RUNTIME_CRASH = "2.b Runtime crash"
+    INCORRECT_RESULTS = "2.c Incorrect results"
+    PERFORMANCE_DEGRADATION = "2.d Performance degradation"
+    MEMORY_ISSUES = "2.e Memory issues"
+    API_CONFUSION = "2.f API/Interface confusion"
+    NOT_APPLICABLE = "2.g Not applicable"
 
 
+# Question 3: Root Cause Analysis
 class DeveloperPerspective(Enum):
-    ARCHITECTURAL_REFACTORING = "3.a architectural refactoring"
-    ADDING_CHECKS = "3.b adding checks, bounds validation, error handling"
-    MATHEMATICAL_CORRECTNESS = "3.c Mathematical correctness fixes"
-    SPECIALIZED_ALGORITHM = "3.d specialized algorithm selection"
-    OTHER_ALGORITHM_OPTIMIZATION = "3.e other algorithm optimization"
-    RACE_CONDITIONS = "3.f addressing race conditions and distributed execution"
-    RECONFIGURE_ENVIRONMENT = "3.g reconfigure environment"
-    WONT_FIX_CONSTRAINT = "3.h won't fix, due to man hour constraint or priority"
-    WONT_FIX_FUNDAMENTAL = "3.i won't fix, fundamentally not fixable"
-    WONT_FIX_OTHER = "3.j won't fix, due to other reasons"
-    NOT_A_BUG = "3.k not a bug, not applicable"
+    DESIGN_FLAW = "3.a Design flaw"
+    MISSING_SAFEGUARDS = "3.b Missing safeguards"
+    CONCURRENCY_ISSUE = "3.c Concurrency issue"
+    CONFIGURATION_ERROR = "3.d Configuration error"
+    UNKNOWN = "3.e Unknown"
+    NOT_APPLICABLE = "3.f Not applicable"
 
 
+# Question 4: Resolution Status
 class AcceleratorSpecific(Enum):
-    VENDOR_SPECIFIC = "4.a yes, accelerator vendor-specific"
-    ARCHITECTURE_SPECIFIC = "4.b yes, accelerator architecture-specific"
-    OS_SPECIFIC = "4.c yes, OS-specific"
-    DRIVER_VERSION_SPECIFIC = "4.d driver version-specific"
-    ENVIRONMENT_SPECIFIC = "4.e other environmental specific configurations"
-    NO = "4.f no"
-    DONT_KNOW = "4.g don't know"
-    NOT_A_BUG = "4.h not a bug, not applicable"
+    FIXED = "4.a Fixed with code changes"
+    WORKAROUND = "4.b Workaround provided"
+    NOT_FIXED = "4.c Not fixed"
+    NOT_APPLICABLE = "4.d Not applicable"
 
 
+# Question 5: Platform Specificity
 class UserExpertise(Enum):
-    BEGINNER = "5.a Beginner"
-    INTERMEDIATE = "5.b Intermediate"
-    ADVANCED = "5.c Advanced"
+    ENVIRONMENT_SPECIFIC = "5.a Environment-specific"
+    UNIVERSAL = "5.b Universal"
+    INSUFFICIENT_DATA = "5.c Insufficient data"
     NOT_APPLICABLE = "5.d Not applicable"
 
-
-class Confidence(Enum):
-    HIGH = "6.a High - Clear evidence"
-    MEDIUM = "6.b Medium - Some uncertainty"
-    LOW = "6.c Low - Significant ambiguity"
-
-
+# Lookup dictionaries
 IS_REALLY_BUG_LOOKUP = {
-    "1.a": IsReallyBug.NO,
-    "1.b": IsReallyBug.SORT_OF_NO,
-    "1.c": IsReallyBug.USER_MISINTERPRET,
-    "1.d": IsReallyBug.DEFINITELY_YES,
+    "1.a": IsReallyBug.NOT_A_BUG,
+    "1.b": IsReallyBug.DESIGN_ISSUE,
+    "1.c": IsReallyBug.USER_ERROR,
+    "1.d": IsReallyBug.CONFIRMED_BUG,
     "1.e": IsReallyBug.DOCUMENTATION_BUG,
 }
 
-
 USER_PERSPECTIVE_LOOKUP = {
-    "2.a": UserPerspective.COMPILATION_BUILD,
-    "2.b": UserPerspective.TYPE_SHAPE_INFERENCE,
-    "2.c": UserPerspective.ACCELERATOR_BACKEND,
-    "2.d": UserPerspective.DISTRIBUTION_SYNC,
-    "2.e": UserPerspective.NUMERICAL_PRECISION,
-    "2.f": UserPerspective.PERFORMANCE_REGRESSION,
-    "2.g": UserPerspective.RESOURCE_EXHAUSTION,
-    "2.h": UserPerspective.API_INTEGRATION,
-    "2.i": UserPerspective.DETERMINISM_REPRODUCIBILITY,
-    "2.j": UserPerspective.OTHER,
-    "2.k": UserPerspective.NOT_A_BUG,
+    "2.a": UserPerspective.COMPILATION_FAILURE,
+    "2.b": UserPerspective.RUNTIME_CRASH,
+    "2.c": UserPerspective.INCORRECT_RESULTS,
+    "2.d": UserPerspective.PERFORMANCE_DEGRADATION,
+    "2.e": UserPerspective.MEMORY_ISSUES,
+    "2.f": UserPerspective.API_CONFUSION,
+    "2.g": UserPerspective.NOT_APPLICABLE,
 }
 
-
 DEVELOPER_PERSPECTIVE_LOOKUP = {
-    "3.a": DeveloperPerspective.ARCHITECTURAL_REFACTORING,
-    "3.b": DeveloperPerspective.ADDING_CHECKS,
-    "3.c": DeveloperPerspective.MATHEMATICAL_CORRECTNESS,
-    "3.d": DeveloperPerspective.SPECIALIZED_ALGORITHM,
-    "3.e": DeveloperPerspective.OTHER_ALGORITHM_OPTIMIZATION,
-    "3.f": DeveloperPerspective.RACE_CONDITIONS,
-    "3.g": DeveloperPerspective.RECONFIGURE_ENVIRONMENT,
-    "3.h": DeveloperPerspective.WONT_FIX_CONSTRAINT,
-    "3.i": DeveloperPerspective.WONT_FIX_FUNDAMENTAL,
-    "3.j": DeveloperPerspective.WONT_FIX_OTHER,
-    "3.k": DeveloperPerspective.NOT_A_BUG,
+    "3.a": DeveloperPerspective.DESIGN_FLAW,
+    "3.b": DeveloperPerspective.MISSING_SAFEGUARDS,
+    "3.c": DeveloperPerspective.CONCURRENCY_ISSUE,
+    "3.d": DeveloperPerspective.CONFIGURATION_ERROR,
+    "3.e": DeveloperPerspective.UNKNOWN,
+    "3.f": DeveloperPerspective.NOT_APPLICABLE,
 }
 
 ACCELERATOR_SPECIFIC_LOOKUP = {
-    "4.a": AcceleratorSpecific.VENDOR_SPECIFIC,
-    "4.b": AcceleratorSpecific.ARCHITECTURE_SPECIFIC,
-    "4.c": AcceleratorSpecific.OS_SPECIFIC,
-    "4.d": AcceleratorSpecific.DRIVER_VERSION_SPECIFIC,
-    "4.e": AcceleratorSpecific.ENVIRONMENT_SPECIFIC,
-    "4.f": AcceleratorSpecific.NO,
-    "4.g": AcceleratorSpecific.DONT_KNOW,
-    "4.h": AcceleratorSpecific.NOT_A_BUG,
+    "4.a": AcceleratorSpecific.FIXED,
+    "4.b": AcceleratorSpecific.WORKAROUND,
+    "4.c": AcceleratorSpecific.NOT_FIXED,
+    "4.d": AcceleratorSpecific.NOT_APPLICABLE,
 }
 
 USER_EXPERTISE_LOOKUP = {
-    "5.a": UserExpertise.BEGINNER,
-    "5.b": UserExpertise.INTERMEDIATE,
-    "5.c": UserExpertise.ADVANCED,
+    "5.a": UserExpertise.ENVIRONMENT_SPECIFIC,
+    "5.b": UserExpertise.UNIVERSAL,
+    "5.c": UserExpertise.INSUFFICIENT_DATA,
     "5.d": UserExpertise.NOT_APPLICABLE,
-}
-
-CONFIDENCE_LOOKUP = {
-    "6.a": Confidence.HIGH,
-    "6.b": Confidence.MEDIUM,
-    "6.c": Confidence.LOW,
 }
