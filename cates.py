@@ -10,6 +10,7 @@ class IsReallyBug(Enum):
     USER_ERROR = "1.c User error"
     CONFIRMED_BUG = "1.d Confirmed bug"
     DOCUMENTATION_BUG = "1.e Documentation bug"
+    DONT_KNOW = "1.f Don't know"
 
 
 # Question 2: User-Visible Symptoms  
@@ -21,6 +22,8 @@ class UserPerspective(Enum):
     MEMORY_ISSUES = "2.e Memory issues"
     API_CONFUSION = "2.f API/Interface confusion"
     NOT_APPLICABLE = "2.g Not applicable"
+    DONT_KNOW = "2.h Don't know"
+    OTHER = "2.i Other"
 
 
 # Question 3: Root Cause Analysis
@@ -31,6 +34,7 @@ class DeveloperPerspective(Enum):
     CONFIGURATION_ERROR = "3.d Configuration error"
     UNKNOWN = "3.e Unknown"
     NOT_APPLICABLE = "3.f Not applicable"
+    OTHER = "3.g Other"
 
 
 # Question 4: Resolution Status
@@ -39,6 +43,7 @@ class AcceleratorSpecific(Enum):
     WORKAROUND = "4.b Workaround provided"
     NOT_FIXED = "4.c Not fixed"
     NOT_APPLICABLE = "4.d Not applicable"
+    DONT_KNOW = "4.e Don't know"
 
 
 # Question 5: Platform Specificity
@@ -55,6 +60,7 @@ IS_REALLY_BUG_LOOKUP = {
     "1.c": IsReallyBug.USER_ERROR,
     "1.d": IsReallyBug.CONFIRMED_BUG,
     "1.e": IsReallyBug.DOCUMENTATION_BUG,
+    "1.f": IsReallyBug.DONT_KNOW,
 }
 
 USER_PERSPECTIVE_LOOKUP = {
@@ -65,6 +71,8 @@ USER_PERSPECTIVE_LOOKUP = {
     "2.e": UserPerspective.MEMORY_ISSUES,
     "2.f": UserPerspective.API_CONFUSION,
     "2.g": UserPerspective.NOT_APPLICABLE,
+    "2.h": UserPerspective.DONT_KNOW,
+    "2.i": UserPerspective.OTHER,
 }
 
 DEVELOPER_PERSPECTIVE_LOOKUP = {
@@ -74,6 +82,7 @@ DEVELOPER_PERSPECTIVE_LOOKUP = {
     "3.d": DeveloperPerspective.CONFIGURATION_ERROR,
     "3.e": DeveloperPerspective.UNKNOWN,
     "3.f": DeveloperPerspective.NOT_APPLICABLE,
+    "3.g": DeveloperPerspective.OTHER,
 }
 
 ACCELERATOR_SPECIFIC_LOOKUP = {
@@ -81,6 +90,7 @@ ACCELERATOR_SPECIFIC_LOOKUP = {
     "4.b": AcceleratorSpecific.WORKAROUND,
     "4.c": AcceleratorSpecific.NOT_FIXED,
     "4.d": AcceleratorSpecific.NOT_APPLICABLE,
+    "4.e": AcceleratorSpecific.DONT_KNOW,
 }
 
 USER_EXPERTISE_LOOKUP = {

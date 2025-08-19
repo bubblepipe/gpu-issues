@@ -5,8 +5,7 @@ import requests
 import os
 import sys
 import time
-import re
-from result import Ok, Err, Result
+from result import Ok, Err
 from prompts import BUG_CATEGORIZATION_PROMPT
 from cates import IS_REALLY_BUG_LOOKUP, USER_PERSPECTIVE_LOOKUP, DEVELOPER_PERSPECTIVE_LOOKUP, ACCELERATOR_SPECIFIC_LOOKUP, USER_EXPERTISE_LOOKUP
 from results_loader import load_categorized_results, get_categorized_urls
@@ -18,8 +17,8 @@ USE_CATEGORIZED_FILE = True # Set to False to select fresh issues
 NUM_PER_FRAMEWORK = 5
 
 # Options: "gemini", "gemini-pro", "ollama", "opus", "dummy"
-# LLM_CHOICE = "gemini-pro"  
-LLM_CHOICE = "opus"  
+LLM_CHOICE = "gemini-pro"  
+# LLM_CHOICE = "opus"  
 
 OLLAMA_MODEL = "qwen3:235b"  # Change this to match your available model
 CATEGORIZED_FILE_PATH = '/Users/bubblepipe/repo/gpu-bugs/selected25.json'
@@ -211,7 +210,7 @@ def parse_llm_output(text):
     
     # Try to find pattern in the last line
     import re
-    pattern = r'([1-5]\.[a-g]),\s*([1-5]\.[a-g]),\s*([1-5]\.[a-g]),\s*([1-5]\.[a-g]),\s*([1-5]\.[a-g])'
+    pattern = r'([1-5]\.[a-i]),\s*([1-5]\.[a-i]),\s*([1-5]\.[a-i]),\s*([1-5]\.[a-i]),\s*([1-5]\.[a-i])'
     match = re.search(pattern, last_line)
     
     if match:
@@ -533,8 +532,7 @@ def ask_opus_4(issue):
     
     # Prepare the full prompt with issue content
     full_prompt = prepare_full_prompt(issue)
-    print(full_prompt)
-    # # exit(0)
+
     url = "https://api.anthropic.com/v1/messages"
     headers = {
         "x-api-key": api_key,
@@ -553,15 +551,14 @@ def ask_opus_4(issue):
     }
     
     try:
-    #     response = requests.post(url, headers=headers, json=data)
-    #     response.raise_for_status()
+        response = requests.post(url, headers=headers, json=data)
+        response.raise_for_status()
         
-    #     json_response = response.json()
-    #     text = json_response["content"][0]["text"]
-    #     print(text)
+        json_response = response.json()
+        text = json_response["content"][0]["text"]
+        print(text)
         print()
 
-        return parse_llm_output("")
         return parse_llm_output(text)
         
     except requests.exceptions.RequestException as e:
