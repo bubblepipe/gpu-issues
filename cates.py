@@ -47,7 +47,7 @@ class AcceleratorSpecific(Enum):
 
 
 # Question 5: Platform Specificity
-class UserExpertise(Enum):
+class PlatformSpecificity(Enum):
     ENVIRONMENT_SPECIFIC = "5.a Environment-specific"
     UNIVERSAL = "5.b Universal"
     INSUFFICIENT_DATA = "5.c Insufficient data"
@@ -93,9 +93,9 @@ ACCELERATOR_SPECIFIC_LOOKUP = {
     "4.e": AcceleratorSpecific.DONT_KNOW,
 }
 
-USER_EXPERTISE_LOOKUP = {
-    "5.a": UserExpertise.ENVIRONMENT_SPECIFIC,
-    "5.b": UserExpertise.UNIVERSAL,
-    "5.c": UserExpertise.INSUFFICIENT_DATA,
-    "5.d": UserExpertise.NOT_APPLICABLE,
+PLATFORM_SPECIFICITY_LOOKUP = {
+    "5.a": PlatformSpecificity.ENVIRONMENT_SPECIFIC,
+    "5.b": PlatformSpecificity.UNIVERSAL,
+    "5.c": PlatformSpecificity.INSUFFICIENT_DATA,
+    "5.d": PlatformSpecificity.NOT_APPLICABLE,
 }

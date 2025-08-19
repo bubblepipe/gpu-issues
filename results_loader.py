@@ -4,9 +4,9 @@ import glob
 import json
 import sys
 from cates import (
-    IsReallyBug, UserPerspective, DeveloperPerspective, AcceleratorSpecific, UserExpertise,
+    IsReallyBug, UserPerspective, DeveloperPerspective, AcceleratorSpecific, PlatformSpecificity,
     IS_REALLY_BUG_LOOKUP, USER_PERSPECTIVE_LOOKUP, 
-    DEVELOPER_PERSPECTIVE_LOOKUP, ACCELERATOR_SPECIFIC_LOOKUP, USER_EXPERTISE_LOOKUP
+    DEVELOPER_PERSPECTIVE_LOOKUP, ACCELERATOR_SPECIFIC_LOOKUP, PLATFORM_SPECIFICITY_LOOKUP
 )
 
 
@@ -18,7 +18,7 @@ def load_categorized_results(pattern):
         pattern: Glob pattern for finding JSON result files (e.g., 'categorized_issues_*.json')
         
     Returns:
-        List of tuples containing (title, url, is_really_bug, user_perspective, developer_perspective, accelerator_specific, user_expertise)
+        List of tuples containing (title, url, is_really_bug, user_perspective, developer_perspective, accelerator_specific, platform_specificity)
     """
     categorized_issues = []
     result_files = glob.glob(pattern)
@@ -35,7 +35,7 @@ def load_categorized_results(pattern):
                 user_perspective = None
                 developer_perspective = None
                 accelerator_specific = None
-                user_expertise = None
+                platform_specificity = None
                 
                 # Find the enum objects by matching their value strings
                 if item.get('is_really_bug'):
@@ -62,10 +62,12 @@ def load_categorized_results(pattern):
                             accelerator_specific = enum_obj
                             break
                 
-                if item.get('user_expertise'):
-                    for code, enum_obj in USER_EXPERTISE_LOOKUP.items():
-                        if enum_obj.value == item['user_expertise']:
-                            user_expertise = enum_obj
+                # Handle both old and new field names for backwards compatibility
+                platform_field = item.get('platform_specificity') or item.get('user_expertise')
+                if platform_field:
+                    for code, enum_obj in PLATFORM_SPECIFICITY_LOOKUP.items():
+                        if enum_obj.value == platform_field:
+                            platform_specificity = enum_obj
                             break
                 
                 # Note: Skip confidence if present in old files (no longer used)
@@ -78,7 +80,7 @@ def load_categorized_results(pattern):
                     user_perspective,
                     developer_perspective,
                     accelerator_specific,
-                    user_expertise
+                    platform_specificity
                 ))
                 
         except FileNotFoundError:
@@ -113,7 +115,7 @@ def load_categorized_json_files(pattern):
         
     Returns:
         List of dictionaries with keys: title, url, is_really_bug, user_perspective, 
-        developer_perspective, accelerator_specific, user_expertise
+        developer_perspective, accelerator_specific, platform_specificity (or user_expertise for backwards compatibility)
     """
     all_issues = []
     result_files = glob.glob(pattern)

@@ -7,8 +7,9 @@ import sys
 import time
 from result import Ok, Err
 from prompts import BUG_CATEGORIZATION_PROMPT
-from cates import IS_REALLY_BUG_LOOKUP, USER_PERSPECTIVE_LOOKUP, DEVELOPER_PERSPECTIVE_LOOKUP, ACCELERATOR_SPECIFIC_LOOKUP, USER_EXPERTISE_LOOKUP
+from cates import IS_REALLY_BUG_LOOKUP, USER_PERSPECTIVE_LOOKUP, DEVELOPER_PERSPECTIVE_LOOKUP, ACCELERATOR_SPECIFIC_LOOKUP, PLATFORM_SPECIFICITY_LOOKUP
 from results_loader import load_categorized_results, get_categorized_urls
+from issue import Issue
 
 
 # Configuration settings
@@ -37,7 +38,7 @@ def load_issues_from_categorized_file(categorized_file_path, issue_groups):
             found = False
             for issues in issue_groups:
                 for issue in issues:
-                    if issue['html_url'] == item['url']:
+                    if issue.html_url == item['url']:
                         all_selected_issues.append(issue)
                         found = True
                         break
@@ -58,7 +59,7 @@ def select_random_uncategorized_issues(issue_groups, categorized_urls, num_per_f
     all_selected_issues = []
     for issues in issue_groups:
         # Find issues that haven't been categorized yet
-        uncategorized_issues = [issue for issue in issues if issue['html_url'] not in categorized_urls]
+        uncategorized_issues = [issue for issue in issues if issue.html_url not in categorized_urls]
         
         num_to_select = min(num_per_framework, len(uncategorized_issues))
         if num_to_select > 0:
@@ -70,13 +71,13 @@ def select_random_uncategorized_issues(issue_groups, categorized_urls, num_per_f
     
     return all_selected_issues
 
-def fetch_issue_comments(issue_url):
-    """Fetch comments for a GitHub issue."""
+def fetch_issue_comments(issue):
+    """Fetch comments for a GitHub issue and store in the Issue object."""
     # Extract owner, repo, and issue number from URL
     # Example: https://github.com/pytorch/pytorch/issues/12345
-    parts = issue_url.replace('https://github.com/', '').split('/')
+    parts = issue.html_url.replace('https://github.com/', '').split('/')
     if len(parts) < 4 or parts[2] != 'issues':
-        return []
+        return
     
     owner = parts[0]
     repo = parts[1]
@@ -101,25 +102,25 @@ def fetch_issue_comments(issue_url):
         if response.status_code == 403:
             print(f"Rate limited when fetching comments. Waiting...")
             time.sleep(60)
-            return []
+            return
         
         response.raise_for_status()
-        return response.json()
+        issue.comments_data = response.json()
     except Exception as e:
         print(f"Error fetching comments: {e}")
-        return []
+        issue.comments_data = []
 
 def print_issue(issue):
     """Pretty print a single issue in markdown format."""
-    print(f"### [{issue['title']}]({issue['html_url']})")
+    print(f"### [{issue.title}]({issue.html_url})")
     print()
     
     # Print metadata
-    print(f"**Created:** {issue.get('created_at', 'Unknown')}")
+    print(f"**Created:** {issue.created_at or 'Unknown'}")
     print()
     
     # Extract tag names from labels
-    tags = [label['name'] for label in issue.get('labels', [])]
+    tags = [label['name'] for label in issue.labels]
     if tags:
         print(f"**Tags:** `{' '.join(tags)}`")
     else:
@@ -127,21 +128,20 @@ def print_issue(issue):
     print()
     
     # Print issue body/content
-    if 'body' in issue and issue['body']:
+    if issue.body:
         print("**Content:**")
         print()
         # Print full content without truncation
-        body = issue['body']
-        print("> " + body.replace('\n', '\n> '))
+        print("> " + issue.body.replace('\n', '\n> '))
     else:
         print("**Content:** _(empty)_")
     
     # Print comments if available
-    if 'comments_data' in issue and issue['comments_data']:
+    if issue.comments_data:
         print()
-        print(f"**Comments ({len(issue['comments_data'])}):**")
+        print(f"**Comments ({len(issue.comments_data)}):**")
         print()
-        for i, comment in enumerate(issue['comments_data'], 1):
+        for i, comment in enumerate(issue.comments_data, 1):
             print(f"#### Comment {i} by {comment.get('user', {}).get('login', 'Unknown')} at {comment.get('created_at', 'Unknown')}")
             print()
             if comment.get('body'):
@@ -149,10 +149,6 @@ def print_issue(issue):
             else:
                 print("> _(empty comment)_")
             print()
-    elif 'comments' in issue and issue['comments'] > 0:
-        # Comments count is available but actual comments not fetched
-        print()
-        print(f"**Comments:** {issue['comments']} comments available (not fetched)")
     
     print()
     print("---")
@@ -163,15 +159,18 @@ def print_issues(issues):
     for issue in issues:
         print_issue(issue)
 
-def load_framework_issues():
-    """Load issues from all framework JSON files."""
+def load_framework_issues(fetch_timelines=False):
+    """Load issues from all framework JSON files as Issue objects."""
     frameworks = ['pytorch', 'tensorflow', 'jax', 'tensorrt', 'triton']
     issue_groups = []
     
     for framework in frameworks:
         try:
             with open(f'./issues/{framework}_issues.json', 'r') as f:
-                issue_groups.append(json.load(f))
+                json_issues = json.load(f)
+                issues = [Issue.from_json(issue_data, fetch_timeline=fetch_timelines) 
+                         for issue_data in json_issues]
+                issue_groups.append(issues)
         except FileNotFoundError:
             print(f"{framework}: file not found")
     
@@ -189,8 +188,8 @@ def parse_developer_perspective(code):
 def parse_accelerator_specific(code):
     return ACCELERATOR_SPECIFIC_LOOKUP.get(code)
 
-def parse_user_expertise(code):
-    return USER_EXPERTISE_LOOKUP.get(code)
+def parse_platform_specificity(code):
+    return PLATFORM_SPECIFICITY_LOOKUP.get(code)
 
 
 def parse_llm_output(text):
@@ -244,42 +243,18 @@ def parse_llm_output(text):
         print(f"DEBUG: Full response:\n{text}")
         return Err(f"Invalid accelerator_specific code: {xs[3]}. Last line: {last_line}")
     
-    if xs[4] not in USER_EXPERTISE_LOOKUP:
-        print(f"DEBUG: Invalid user_expertise code: {xs[4]}")
+    if xs[4] not in PLATFORM_SPECIFICITY_LOOKUP:
+        print(f"DEBUG: Invalid platform_specificity code: {xs[4]}")
         print(f"DEBUG: Full response:\n{text}")
-        return Err(f"Invalid user_expertise code: {xs[4]}. Last line: {last_line}")
+        return Err(f"Invalid platform_specificity code: {xs[4]}. Last line: {last_line}")
     
-    return Ok((parse_is_really_bug(xs[0]), parse_user_perspective(xs[1]), parse_developer_perspective(xs[2]), parse_accelerator_specific(xs[3]), parse_user_expertise(xs[4])))
+    return Ok((parse_is_really_bug(xs[0]), parse_user_perspective(xs[1]), parse_developer_perspective(xs[2]), parse_accelerator_specific(xs[3]), parse_platform_specificity(xs[4])))
 
 
 
 def prepare_full_prompt(issue):
-    """Prepare the full prompt with issue content including title, labels, body, and comments."""
-    issue_content = f"Title: {issue['title']}\n"
-    issue_content += f"URL: {issue['html_url']}\n"
-    
-    # Add labels
-    labels = [label['name'] for label in issue.get('labels', [])]
-    if labels:
-        issue_content += f"Labels: {', '.join(labels)}\n"
-    
-    issue_content += "\nIssue Description:\n"
-    if issue.get('body'):
-        issue_content += issue['body'] + "\n"
-    else:
-        issue_content += "(No description provided)\n"
-    
-    # Add comments if available
-    if 'comments_data' in issue and issue['comments_data']:
-        issue_content += f"\n--- Comments ({len(issue['comments_data'])}) ---\n"
-        for i, comment in enumerate(issue['comments_data'], 1):
-            issue_content += f"\nComment {i} by {comment.get('user', {}).get('login', 'Unknown')} at {comment.get('created_at', 'Unknown')}:\n"
-            if comment.get('body'):
-                issue_content += comment['body'] + "\n"
-            else:
-                issue_content += "(Empty comment)\n"
-    
-    # Combine prompt with issue content
+    """Prepare the full prompt with issue content."""
+    issue_content = issue.to_string_pretty()
     full_prompt = BUG_CATEGORIZATION_PROMPT + "\n\nISSUE CONTENT:\n" + issue_content
     return full_prompt
 
@@ -601,11 +576,10 @@ def main():
     
     for issue in all_selected_issues:
         # Fetch comments for this issue
-        comments = fetch_issue_comments(issue['html_url'])
-        issue['comments_data'] = comments
+        fetch_issue_comments(issue)
         
-        title = issue['title']
-        url = issue['html_url']
+        title = issue.title
+        url = issue.html_url
         print(f"{title} \n{url}")
         
         # Choose which LLM to use based on configuration
@@ -651,7 +625,7 @@ def main():
                 "user_perspective": item[3].value if item[3] else None,
                 "developer_perspective": item[4].value if item[4] else None,
                 "accelerator_specific": item[5].value if item[5] else None,
-                "user_expertise": item[6].value if item[6] else None
+                "platform_specificity": item[6].value if item[6] else None
             })
         
         with open(output_filename, 'w') as f:

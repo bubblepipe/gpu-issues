@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from collections import Counter, defaultdict
 from results_loader import load_categorized_results, load_categorized_json_files
-from cates import IsReallyBug, UserPerspective, DeveloperPerspective, AcceleratorSpecific, UserExpertise
+from cates import IsReallyBug, UserPerspective, DeveloperPerspective, AcceleratorSpecific, PlatformSpecificity
 
 # Set style for better-looking plots
 plt.style.use('seaborn-v0_8-darkgrid')
@@ -43,7 +43,7 @@ def plot_platform_distributions(categorized_issues, title="", ax=None):
     user_perspective = [issue[3] for issue in categorized_issues if issue[3] is not None]
     developer_perspective = [issue[4] for issue in categorized_issues if issue[4] is not None]
     accelerator_specific = [issue[5] for issue in categorized_issues if issue[5] is not None]
-    user_expertise = [issue[6] for issue in categorized_issues if issue[6] is not None]
+    platform_specificity = [issue[6] for issue in categorized_issues if issue[6] is not None]
     
     # Count each category
     categories = {
@@ -51,7 +51,7 @@ def plot_platform_distributions(categorized_issues, title="", ax=None):
         'User Symptom': Counter(user_perspective),
         'Root Cause': Counter(developer_perspective),
         'Resolution': Counter(accelerator_specific),
-        'Platform': Counter(user_expertise)
+        'Platform': Counter(platform_specificity)
     }
     
     # Prepare data for grouped bar plot with subtitles
@@ -100,7 +100,7 @@ def plot_platform_distributions(categorized_issues, title="", ax=None):
         'User Symptom': list(UserPerspective),
         'Root Cause': list(DeveloperPerspective),
         'Resolution': list(AcceleratorSpecific),
-        'Platform': list(UserExpertise)
+        'Platform': list(PlatformSpecificity)
     }
     
     for i, (cat_name, cat_counts) in enumerate(categories.items()):
@@ -267,21 +267,21 @@ def plot_definitely_bugs_distributions(categorized_issues, save_path="definitely
     return fig
 
 
-def plot_expertise_filtered_distributions(categorized_issues, expertise_level, save_path=None):
+def plot_platform_filtered_distributions(categorized_issues, platform_level, save_path=None):
     """
-    Create a single figure with 6 subplots showing only issues for a specific expertise level.
+    Create a single figure with 6 subplots showing only issues for a specific platform specificity.
     
     Args:
         categorized_issues: List of all categorized issue tuples
-        expertise_level: UserExpertise enum value to filter by (BEGINNER, INTERMEDIATE, or ADVANCED)
+        platform_level: PlatformSpecificity enum value to filter by
         save_path: Path to save the combined figure
     """
-    # Filter for specific expertise level
+    # Filter for specific platform specificity
     filtered_issues = [issue for issue in categorized_issues 
-                       if issue[6] is not None and issue[6] == expertise_level]
+                       if issue[6] is not None and issue[6] == platform_level]
     
     if not filtered_issues:
-        print(f"No issues found for expertise level: {expertise_level.name}")
+        print(f"No issues found for platform specificity: {platform_level.name}")
         return None
     
     # Separate filtered issues by platform
@@ -294,7 +294,7 @@ def plot_expertise_filtered_distributions(categorized_issues, expertise_level, s
     
     # Create figure with 2x3 subplots
     fig, axes = plt.subplots(2, 3, figsize=(20, 12))
-    fig.suptitle(f'Bug Categorization Distributions - {expertise_level.name.title()} Level Users', 
+    fig.suptitle(f'Bug Categorization Distributions - {platform_level.name.title()} Platform Specificity', 
                  fontsize=18, fontweight='bold', y=1.02)
     fig.patch.set_facecolor('#F8F9FA')
     
@@ -308,11 +308,11 @@ def plot_expertise_filtered_distributions(categorized_issues, expertise_level, s
         ax = axes[row, col]
         if platform == 'All':
             plot_platform_distributions(filtered_issues, 
-                                       title=f"All Platforms ({expertise_level.name.title()})", ax=ax)
+                                       title=f"All Platforms ({platform_level.name.title()})", ax=ax)
         else:
             platform_data = platform_issues.get(platform, [])
             plot_platform_distributions(platform_data, 
-                                       title=f"{platform} ({expertise_level.name.title()})", ax=ax)
+                                       title=f"{platform} ({platform_level.name.title()})", ax=ax)
         
     # Adjust layout
     plt.tight_layout()
@@ -320,7 +320,7 @@ def plot_expertise_filtered_distributions(categorized_issues, expertise_level, s
     # Save figure
     if save_path:
         plt.savefig(save_path, dpi=150, bbox_inches='tight')
-        print(f"{expertise_level.name.title()} level distributions saved to {save_path}")
+        print(f"{platform_level.name.title()} platform specificity distributions saved to {save_path}")
     else:
         plt.show()
     
@@ -340,7 +340,7 @@ def plot_bug_distributions(categorized_issues, save_path=None):
     user_perspective = [issue[3] for issue in categorized_issues if issue[3] is not None]
     developer_perspective = [issue[4] for issue in categorized_issues if issue[4] is not None]
     accelerator_specific = [issue[5] for issue in categorized_issues if issue[5] is not None]
-    user_expertise = [issue[6] for issue in categorized_issues if issue[6] is not None]
+    platform_specificity = [issue[6] for issue in categorized_issues if issue[6] is not None]
     
     # Create subplots - now with 6 plots (2x3 grid)
     fig, ((ax1, ax2, ax3), (ax4, ax5, ax6)) = plt.subplots(2, 3, figsize=(20, 12))
@@ -463,23 +463,23 @@ def plot_bug_distributions(categorized_issues, save_path=None):
                     fontsize=5, color='gray', rotation=90)
             ax4.text(i, 0.1, '0', ha='center', va='bottom', fontsize=5, color='gray')
     
-    # Plot User Expertise
-    expertise_counts = Counter(user_expertise)
+    # Plot Platform Specificity
+    platform_counts = Counter(platform_specificity)
     # Get all enum values in order, not just the ones with data
-    expertise_items = list(UserExpertise)
-    expertise_labels = [ue.name.replace('_', ' ').title() for ue in expertise_items]
-    expertise_texts = [ue.value[:25] + "..." if len(ue.value) > 25 else ue.value for ue in expertise_items]  # Full text, truncated
-    expertise_values = [expertise_counts.get(ue, 0) for ue in expertise_items]  # Use 0 for missing values
+    platform_items = list(PlatformSpecificity)
+    platform_labels = [ps.name.replace('_', ' ').title() for ps in platform_items]
+    platform_texts = [ps.value[:25] + "..." if len(ps.value) > 25 else ps.value for ps in platform_items]  # Full text, truncated
+    platform_values = [platform_counts.get(ps, 0) for ps in platform_items]  # Use 0 for missing values
     
-    ax5.bar(expertise_labels, expertise_values, color='#9D4EDD', edgecolor='#2D3436', linewidth=0.8, alpha=0.85)
-    ax5.set_title('User Expertise Distribution', fontweight='bold', fontsize=12)
+    ax5.bar(platform_labels, platform_values, color='#9D4EDD', edgecolor='#2D3436', linewidth=0.8, alpha=0.85)
+    ax5.set_title('Platform Specificity Distribution', fontweight='bold', fontsize=12)
     ax5.set_ylabel('Count')
     ax5.tick_params(axis='x', rotation=45)
     ax5.set_facecolor('#FAFBFC')
     ax5.grid(axis='y', alpha=0.3, linestyle='--', linewidth=0.5)
     
     # Add value and text labels on bars
-    for i, (v, text) in enumerate(zip(expertise_values, expertise_texts)):
+    for i, (v, text) in enumerate(zip(platform_values, platform_texts)):
         if v > 0:
             # Add full text label on top (vertical, black) with left anchor
             ax5.text(i, v + 1.5, text, ha='left', va='bottom', 
@@ -628,7 +628,7 @@ if __name__ == "__main__":
         # Create platform-specific plots for only definitely bugs (1.d)
         plot_definitely_bugs_distributions(categorized_issues, save_path="definitely_bugs_distributions.png")
         
-        # Note: Expertise filtering removed as UserExpertise now represents Platform Specificity
+        # Note: Platform filtering function renamed from expertise to platform specificity
         
         # Also create the original detailed plots if needed
         # plot_bug_distributions(categorized_issues, save_path="bug_distributions.png")
