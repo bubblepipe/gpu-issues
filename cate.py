@@ -5,11 +5,15 @@ import requests
 import os
 import sys
 import time
+import urllib3
 from result import Ok, Err
 from prompts import BUG_CATEGORIZATION_PROMPT
 from cates import IS_REALLY_BUG_LOOKUP, USER_PERSPECTIVE_LOOKUP, DEVELOPER_PERSPECTIVE_LOOKUP, ACCELERATOR_SPECIFIC_LOOKUP, PLATFORM_SPECIFICITY_LOOKUP
 from results_loader import load_categorized_results, get_categorized_urls
 from issue import Issue
+
+# Suppress SSL warnings when we fallback to unverified requests
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
 # Configuration settings
@@ -18,8 +22,8 @@ USE_CATEGORIZED_FILE = True # Set to False to select fresh issues
 NUM_PER_FRAMEWORK = 5
 
 # Options: "gemini", "gemini-pro", "ollama", "opus", "dummy"
-LLM_CHOICE = "gemini-pro"  
-# LLM_CHOICE = "opus"  
+# LLM_CHOICE = "gemini-pro"  
+LLM_CHOICE = "opus"  
 
 OLLAMA_MODEL = "qwen3:235b"  # Change this to match your available model
 CATEGORIZED_FILE_PATH = '/Users/bubblepipe/repo/gpu-bugs/selected25.json'
@@ -192,6 +196,133 @@ def parse_platform_specificity(code):
     return PLATFORM_SPECIFICITY_LOOKUP.get(code)
 
 
+def fetch_mentioned_issue_content(url, cache={}):
+    """Fetch the content of a mentioned issue or PR from GitHub API.
+    
+    Args:
+        url: GitHub issue/PR URL
+        cache: Dictionary to cache fetched content
+    
+    Returns:
+        String containing the issue/PR content or None if failed
+    """
+    # Check cache first
+    if url in cache:
+        return cache[url]
+    
+    # Convert HTML URL to API URL
+    # Example: https://github.com/pytorch/pytorch/issues/123 -> https://api.github.com/repos/pytorch/pytorch/issues/123
+    if not url.startswith('https://github.com/'):
+        return None
+    
+    api_url = url.replace('https://github.com/', 'https://api.github.com/repos/')
+    api_url = api_url.replace('/pull/', '/pulls/')  # Handle PRs
+    
+    headers = {'Accept': 'application/vnd.github.v3+json'}
+    github_token = os.getenv('GITHUB_TOKEN')
+    if github_token:
+        headers['Authorization'] = f'token {github_token}'
+    
+    # Retry logic for SSL and connection errors
+    max_retries = 3
+    retry_delay = 1
+    
+    for attempt in range(max_retries):
+        try:
+            # Add timeout to prevent hanging
+            response = requests.get(api_url, headers=headers, timeout=30)
+            
+            # Handle rate limiting
+            if response.status_code == 403:
+                print(f"Rate limited when fetching {url}")
+                return None
+            
+            if response.status_code == 200:
+                data = response.json()
+                
+                # Build content string
+                content = f"Title: {data.get('title', 'Unknown')}\n"
+                content += f"State: {data.get('state', 'unknown')}\n"
+                content += f"Created: {data.get('created_at', 'unknown')}\n"
+                
+                # Add labels
+                labels = data.get('labels', [])
+                if labels:
+                    label_names = [label['name'] for label in labels]
+                    content += f"Labels: {', '.join(label_names)}\n"
+                
+                # Add body
+                body = data.get('body', '')
+                if body:
+                    content += f"\nDescription:\n{body}\n"
+                else:
+                    content += "\nDescription: (empty)\n"
+                
+                # Fetch first few comments (limit to 3 to avoid huge prompts)
+                comments_url = data.get('comments_url')
+                if comments_url:
+                    try:
+                        comments_response = requests.get(comments_url, headers=headers, timeout=30)
+                        if comments_response.status_code == 200:
+                            comments = comments_response.json()[:3]  # Limit to first 3 comments
+                            if comments:
+                                content += f"\nFirst {len(comments)} comments:\n"
+                                for i, comment in enumerate(comments, 1):
+                                    user = comment.get('user', {}).get('login', 'Unknown')
+                                    body = comment.get('body', '(empty)')
+                                    content += f"\nComment {i} by {user}:\n{body}\n"
+                    except:
+                        pass  # Ignore comment fetching errors
+                
+                # Cache the result
+                cache[url] = content
+                return content
+                
+        except requests.exceptions.SSLError as e:
+            if attempt < max_retries - 1:
+                print(f"SSL error fetching {url}, retrying in {retry_delay}s... (attempt {attempt + 1}/{max_retries})")
+                time.sleep(retry_delay)
+                retry_delay *= 2
+            else:
+                # Last attempt - try without SSL verification
+                try:
+                    print(f"SSL verification failed for {url}, trying without verification...")
+                    response = requests.get(api_url, headers=headers, timeout=30, verify=False)
+                    if response.status_code == 200:
+                        data = response.json()
+                        # Build minimal content without comments
+                        content = f"Title: {data.get('title', 'Unknown')}\n"
+                        content += f"State: {data.get('state', 'unknown')}\n"
+                        body = data.get('body', '')
+                        if body:
+                            content += f"\nDescription:\n{body[:500]}...\n" if len(body) > 500 else f"\nDescription:\n{body}\n"
+                        cache[url] = content
+                        return content
+                except:
+                    print(f"Failed to fetch {url} even without SSL verification")
+                    return None
+                    
+        except requests.exceptions.Timeout:
+            print(f"Timeout fetching {url} (attempt {attempt + 1}/{max_retries})")
+            if attempt >= max_retries - 1:
+                return None
+            time.sleep(retry_delay)
+            retry_delay *= 2
+            
+        except requests.exceptions.ConnectionError as e:
+            print(f"Connection error fetching {url}: {e}")
+            if attempt >= max_retries - 1:
+                return None
+            time.sleep(retry_delay)
+            retry_delay *= 2
+            
+        except Exception as e:
+            print(f"Unexpected error fetching {url}: {e}")
+            return None
+    
+    return None
+
+
 def parse_llm_output(text):
     # Split response by lines and get the last non-empty line
     lines = text.strip().split('\n')
@@ -253,9 +384,48 @@ def parse_llm_output(text):
 
 
 def prepare_full_prompt(issue):
-    """Prepare the full prompt with issue content."""
+    # Fetch timeline data for this specific issue only when needed
+    if hasattr(issue, 'fetch_timeline'):
+        issue.fetch_timeline()
+    
     issue_content = issue.to_string_pretty()
     full_prompt = BUG_CATEGORIZATION_PROMPT + "\n\nISSUE CONTENT:\n" + issue_content
+    
+    # Append mentioned issues and PRs from timeline
+    mentioned_content = []
+    content_cache = {}  # Cache to avoid re-fetching
+    
+    # Limit total number of mentioned items to avoid huge prompts
+    max_mentioned_items = 10
+    items_added = 0
+    
+    # Add mentioned PRs
+    if hasattr(issue, 'mentioned_prs') and issue.mentioned_prs:
+        for pr in issue.mentioned_prs[:max_mentioned_items]:
+            if items_added >= max_mentioned_items:
+                break
+            pr_content = fetch_mentioned_issue_content(pr.html_url, content_cache)
+            if pr_content:
+                mentioned_content.append(f"\n\n=== MENTIONED PULL REQUEST #{pr.number} ===\n{pr_content}")
+                items_added += 1
+    
+    # Add mentioned issues
+    if hasattr(issue, 'mentioned_issues') and issue.mentioned_issues:
+        for mentioned_issue in issue.mentioned_issues[:max_mentioned_items - items_added]:
+            if items_added >= max_mentioned_items:
+                break
+            issue_url = mentioned_issue.get('url')
+            if issue_url:
+                issue_content = fetch_mentioned_issue_content(issue_url, content_cache)
+                if issue_content:
+                    mentioned_content.append(f"\n\n=== MENTIONED ISSUE #{mentioned_issue.get('number')} ===\n{issue_content}")
+                    items_added += 1
+    
+    # Append all mentioned content to the prompt
+    if mentioned_content:
+        full_prompt += "\n\n--- RELATED ISSUES AND PULL REQUESTS FROM TIMELINE ---"
+        full_prompt += "".join(mentioned_content)
+    
     return full_prompt
 
 
@@ -507,11 +677,10 @@ def ask_opus_4(issue):
     
     # Prepare the full prompt with issue content
     full_prompt = prepare_full_prompt(issue)
-
     url = "https://api.anthropic.com/v1/messages"
     headers = {
         "x-api-key": api_key,
-        "anthropic-version": "2023-06-01",
+        "anthropic-version": "2023-06-01",  # This is still the latest stable version as of 2025
         "content-type": "application/json"
     }
     data = {
@@ -533,7 +702,6 @@ def ask_opus_4(issue):
         text = json_response["content"][0]["text"]
         print(text)
         print()
-
         return parse_llm_output(text)
         
     except requests.exceptions.RequestException as e:
@@ -550,8 +718,8 @@ def main():
     """Main function to categorize issues."""
     import datetime
     
-    # Load framework issues
-    issue_groups = load_framework_issues()
+    # Load framework issues without timeline data (will be fetched lazily)
+    issue_groups = load_framework_issues(fetch_timelines=False)
     
     # Load categorized issues from JSON files
     categorized_issues = load_categorized_results('/Users/bubblepipe/repo/gpu-bugs/categorized_issues_*.json')

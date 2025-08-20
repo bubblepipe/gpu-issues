@@ -5,6 +5,10 @@ from typing import List, Dict, Optional
 import requests
 import os
 import time
+import urllib3
+
+# Suppress SSL warnings when we fallback to unverified requests
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
 @dataclass
@@ -63,25 +67,66 @@ class Issue:
         if not self.timeline_url:
             return
         
+        # Note: Intentionally NOT using GitHub token for timeline API
+        # The timeline API behaves differently with authentication - it excludes 'cross-referenced' events
+        # when a token is provided, which causes us to miss important related issues/PRs
         headers = {'Accept': 'application/vnd.github.v3+json'}
-        github_token = os.getenv('GITHUB_TOKEN')
-        if github_token:
-            headers['Authorization'] = f'token {github_token}'
         
-        try:
-            response = requests.get(self.timeline_url, headers=headers)
-            
-            # Handle rate limiting
-            if response.status_code == 403:
-                print(f"Rate limited when fetching timeline for issue #{self.number}. Waiting...")
-                time.sleep(60)
-                return
-            
-            if response.status_code == 200:
-                timeline = response.json()
-                self._parse_timeline(timeline)
-        except Exception as e:
-            print(f"Error fetching timeline for issue #{self.number}: {e}")
+        # Retry logic for SSL and connection errors
+        max_retries = 3
+        retry_delay = 1  # Starting delay in seconds
+        
+        for attempt in range(max_retries):
+            try:
+                # Add timeout to prevent hanging connections
+                response = requests.get(self.timeline_url, headers=headers, timeout=30)
+                
+                # Handle rate limiting
+                if response.status_code == 403:
+                    print(f"Rate limited when fetching timeline for issue #{self.number}. Waiting...")
+                    time.sleep(60)
+                    return
+                
+                if response.status_code == 200:
+                    timeline = response.json()
+                    self._parse_timeline(timeline)
+                    return  # Success, exit the retry loop
+                    
+            except requests.exceptions.SSLError as e:
+                if attempt < max_retries - 1:
+                    print(f"SSL error fetching timeline for issue #{self.number}, retrying in {retry_delay}s... (attempt {attempt + 1}/{max_retries})")
+                    time.sleep(retry_delay)
+                    retry_delay *= 2  # Exponential backoff
+                else:
+                    # Last attempt - try with verify=False as fallback
+                    try:
+                        print(f"SSL verification failed for issue #{self.number}, trying without verification...")
+                        response = requests.get(self.timeline_url, headers=headers, timeout=30, verify=False)
+                        if response.status_code == 200:
+                            timeline = response.json()
+                            self._parse_timeline(timeline)
+                            return
+                    except Exception as fallback_error:
+                        print(f"Failed to fetch timeline for issue #{self.number} even without SSL verification: {fallback_error}")
+                        return
+                        
+            except requests.exceptions.Timeout:
+                print(f"Timeout fetching timeline for issue #{self.number} (attempt {attempt + 1}/{max_retries})")
+                if attempt >= max_retries - 1:
+                    return
+                time.sleep(retry_delay)
+                retry_delay *= 2
+                
+            except requests.exceptions.ConnectionError as e:
+                print(f"Connection error fetching timeline for issue #{self.number}: {e}")
+                if attempt >= max_retries - 1:
+                    return
+                time.sleep(retry_delay)
+                retry_delay *= 2
+                
+            except Exception as e:
+                print(f"Unexpected error fetching timeline for issue #{self.number}: {e}")
+                return  # Don't retry on unexpected errors
     
     def _parse_timeline(self, timeline_events):
         """Parse timeline events to extract mentioned issues/PRs"""
@@ -109,6 +154,14 @@ class Issue:
                         }
                         if issue_info not in self.mentioned_issues:
                             self.mentioned_issues.append(issue_info)
+            
+            elif event_type == 'referenced':
+                # Parse 'referenced' events which often contain commit references
+                # These events have 'commit_id' and 'commit_url' fields
+                # GitHub automatically creates 'referenced' events when commits mention issues
+                # For now, we just note these exist but don't extract issue/PR info from them
+                # as that would require additional API calls to fetch commit details
+                pass
             
             elif event_type == 'closed':
                 # Check if closed by PR
