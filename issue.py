@@ -6,6 +6,7 @@ import requests
 import os
 import time
 import urllib3
+import re
 
 # Suppress SSL warnings when we fallback to unverified requests
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -91,6 +92,10 @@ class Issue:
                 if response.status_code == 200:
                     timeline = response.json()
                     self._parse_timeline(timeline)
+                    # Also fetch connected PRs via GraphQL
+                    self.fetch_connected_prs_graphql()
+                    # Parse body for issue/PR references
+                    self.parse_body_references()
                     return  # Success, exit the retry loop
                     
             except requests.exceptions.SSLError as e:
@@ -106,6 +111,10 @@ class Issue:
                         if response.status_code == 200:
                             timeline = response.json()
                             self._parse_timeline(timeline)
+                            # Also fetch connected PRs via GraphQL
+                            self.fetch_connected_prs_graphql()
+                            # Parse body for issue/PR references
+                            self.parse_body_references()
                             return
                     except Exception as fallback_error:
                         print(f"Failed to fetch timeline for issue #{self.number} even without SSL verification: {fallback_error}")
@@ -128,6 +137,177 @@ class Issue:
             except Exception as e:
                 print(f"Unexpected error fetching timeline for issue #{self.number}: {e}")
                 return  # Don't retry on unexpected errors
+    
+    def parse_body_references(self):
+        """Parse issue body and comments for #number references to other issues/PRs."""
+        if not self.body:
+            return
+        
+        # Find all #number patterns in the body
+        # Exclude common false positives like #define, #include
+        pattern = r'(?<![\w#])#(\d+)\b'
+        
+        # Extract owner and repo from html_url
+        parts = self.html_url.replace('https://github.com/', '').split('/')
+        if len(parts) < 4:
+            return
+        
+        owner = parts[0]
+        repo = parts[1]
+        
+        # Find all matches in body
+        matches = re.findall(pattern, self.body)
+        
+        # Also search in comments if they exist
+        if self.comments_data:
+            for comment in self.comments_data:
+                comment_body = comment.get('body', '')
+                matches.extend(re.findall(pattern, comment_body))
+        
+        # Remove duplicates and self-references
+        unique_numbers = set(int(m) for m in matches if int(m) != self.number)
+        
+        # For each reference, check if it's an issue or PR (limited to avoid too many API calls)
+        github_token = os.getenv('GITHUB_TOKEN')
+        headers = {'Accept': 'application/vnd.github.v3+json'}
+        if github_token:
+            headers['Authorization'] = f'token {github_token}'
+        
+        for number in list(unique_numbers)[:10]:  # Limit to 10 to avoid too many API calls
+            try:
+                # First try as issue
+                issue_url = f"https://api.github.com/repos/{owner}/{repo}/issues/{number}"
+                response = requests.get(issue_url, headers=headers, timeout=5)
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    # Check if it's a PR or issue
+                    if 'pull_request' in data:
+                        # It's a PR
+                        pr = PullRequest(
+                            number=data.get('number', 0),
+                            title=data.get('title', ''),
+                            html_url=data.get('html_url', ''),
+                            state=data.get('state', 'unknown'),
+                            merged=data.get('pull_request', {}).get('merged_at') is not None
+                        )
+                        if pr not in self.mentioned_prs:
+                            self.mentioned_prs.append(pr)
+                    else:
+                        # It's an issue
+                        issue_info = {
+                            'number': data.get('number'),
+                            'title': data.get('title'),
+                            'url': data.get('html_url'),
+                            'state': data.get('state')
+                        }
+                        if issue_info not in self.mentioned_issues:
+                            self.mentioned_issues.append(issue_info)
+            except:
+                # Silently skip if we can't fetch the reference
+                pass
+    
+    def fetch_connected_prs_graphql(self):
+        """Fetch PRs connected via GitHub's 'linked to close' feature using GraphQL API."""
+        # Extract owner and repo from html_url
+        # Example: https://github.com/pytorch/pytorch/issues/93372
+        parts = self.html_url.replace('https://github.com/', '').split('/')
+        if len(parts) < 4:
+            return
+        
+        owner = parts[0]
+        repo = parts[1]
+        
+        # GraphQL query to get connected PRs
+        query = """
+        query($owner: String!, $repo: String!, $number: Int!) {
+          repository(owner: $owner, name: $repo) {
+            issue(number: $number) {
+              timelineItems(first: 100, itemTypes: [CONNECTED_EVENT, DISCONNECTED_EVENT]) {
+                nodes {
+                  __typename
+                  ... on ConnectedEvent {
+                    subject {
+                      __typename
+                      ... on PullRequest {
+                        number
+                        title
+                        url
+                        state
+                        merged
+                      }
+                    }
+                  }
+                  ... on DisconnectedEvent {
+                    subject {
+                      __typename
+                      ... on PullRequest {
+                        number
+                        title
+                        url
+                        state
+                        merged
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+        """
+        
+        github_token = os.getenv('GITHUB_TOKEN')
+        if not github_token:
+            # Can't use GraphQL without token
+            return
+        
+        headers = {
+            'Authorization': f'Bearer {github_token}',
+            'Content-Type': 'application/json'
+        }
+        
+        variables = {
+            'owner': owner,
+            'repo': repo,
+            'number': self.number
+        }
+        
+        try:
+            response = requests.post(
+                'https://api.github.com/graphql',
+                json={'query': query, 'variables': variables},
+                headers=headers,
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                if 'data' in data and data['data']:
+                    repository = data['data'].get('repository', {})
+                    issue = repository.get('issue', {})
+                    timeline_items = issue.get('timelineItems', {})
+                    nodes = timeline_items.get('nodes', [])
+                    
+                    for node in nodes:
+                        if node and 'subject' in node:
+                            subject = node['subject']
+                            if subject and subject.get('__typename') == 'PullRequest':
+                                # Create PullRequest object
+                                pr = PullRequest(
+                                    number=subject.get('number', 0),
+                                    title=subject.get('title', ''),
+                                    html_url=subject.get('url', ''),
+                                    state=subject.get('state', 'unknown').lower(),
+                                    merged=subject.get('merged', False)
+                                )
+                                # Add if not already in list
+                                if pr not in self.mentioned_prs:
+                                    self.mentioned_prs.append(pr)
+                                    
+        except Exception as e:
+            # Silently fail - GraphQL is supplementary
+            pass
     
     def _parse_timeline(self, timeline_events):
         """Parse timeline events to extract mentioned issues/PRs"""
