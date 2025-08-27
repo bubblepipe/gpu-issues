@@ -53,6 +53,7 @@ class Issue:
     user: Dict  # author info
     
     # Additional fields
+    comments_count: int = 0  # Number of comments/discussions
     comments_data: List[Dict] = field(default_factory=list)
     timeline_url: Optional[str] = None
     
@@ -235,6 +236,7 @@ class Issue:
             created_at=json_data.get('created_at', ''),
             closed_at=json_data.get('closed_at'),
             user=json_data.get('user', {}),
+            comments_count=json_data.get('comments', 0),  # Extract comments count
             timeline_url=json_data.get('timeline_url')
         )
         

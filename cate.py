@@ -16,17 +16,18 @@ from issue import Issue
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
-# Configuration settings
-USE_CATEGORIZED_FILE = True # Set to False to select fresh issues
-# USE_CATEGORIZED_FILE = False  # Set to False to select fresh issues
-NUM_PER_FRAMEWORK = 5
+CATEGORIZED_FILE_PATH = '/Users/bubblepipe/repo/gpu-bugs/selected25.json'
+# USE_CATEGORIZED_FILE = True # Set to False to select fresh issues
+USE_CATEGORIZED_FILE = False  # Set to False to select fresh issues
+
+NUM_PER_FRAMEWORK = 10
 
 # Options: "gemini", "gemini-pro", "ollama", "opus", "dummy"
 # LLM_CHOICE = "gemini-pro"  
-LLM_CHOICE = "opus"  
+LLM_CHOICE = "dummy"  
+# LLM_CHOICE = "opus"  
 
 OLLAMA_MODEL = "qwen3:235b"  # Change this to match your available model
-CATEGORIZED_FILE_PATH = '/Users/bubblepipe/repo/gpu-bugs/selected25.json'
 
 
 def load_issues_from_categorized_file(categorized_file_path, issue_groups):
@@ -58,20 +59,33 @@ def load_issues_from_categorized_file(categorized_file_path, issue_groups):
         print(f"Error decoding JSON from: {categorized_file_path}")
         return []
 
+def has_unwanted_labels(issue):
+    """Check if issue has stale or awaiting response labels."""
+    if not hasattr(issue, 'labels'):
+        return False
+    for label in issue.labels:
+        label_name = label.get('name', '').lower()
+        if 'stale' in label_name or 'awaiting response' in label_name:
+            return True
+    return False
+
 def select_random_uncategorized_issues(issue_groups, categorized_urls, num_per_framework=NUM_PER_FRAMEWORK):
     """Select random uncategorized issues from each framework."""
     all_selected_issues = []
     for issues in issue_groups:
-        # Find issues that haven't been categorized yet
-        uncategorized_issues = [issue for issue in issues if issue.html_url not in categorized_urls]
-        
+        # Find issues that haven't been categorized yet, have at least one comment, and don't have unwanted labels
+        uncategorized_issues = [issue for issue in issues 
+                              if issue.html_url not in categorized_urls 
+                              and hasattr(issue, 'comments_count') 
+                              and issue.comments_count > 0
+                              and not has_unwanted_labels(issue)]
         num_to_select = min(num_per_framework, len(uncategorized_issues))
         if num_to_select > 0:
             selected_issues = random.sample(uncategorized_issues, num_to_select)
             all_selected_issues.extend(selected_issues)
-            print(f"Selected {num_to_select} uncategorized issues from framework")
+            print(f"Selected {num_to_select} uncategorized issues with comments from framework")
         else:
-            print(f"All issues in this framework have already been categorized")
+            print(f"No uncategorized issues with comments available in this framework")
     
     return all_selected_issues
 
