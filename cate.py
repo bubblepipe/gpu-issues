@@ -509,7 +509,7 @@ def ask_gpt5(issue):
     # Determine which API to use based on configuration
     if GPT_API_PROVIDER == "neko":
         # Use NekoAPI
-        api_key = os.getenv("NEKO_API_KEY")
+        api_key = os.getenv("NEKO_DEFAULT_API_KEY")
         if not api_key:
             return Err("NEKO_API_KEY not found. Please set the NEKO_API_KEY environment variable.")
         api_base = NEKO_API_BASE
@@ -734,7 +734,7 @@ def ask_opus_4(issue):
     # Determine which API to use based on configuration
     if OPUS_API_PROVIDER == "neko":
         # Use NekoAPI endpoint for Claude models
-        api_key = os.getenv("NEKO_API_KEY")
+        api_key = os.getenv("NEKO_CLAUDE_API_KEY")
         if not api_key:
             return Err("NEKO_API_KEY not found. Please set the NEKO_API_KEY environment variable.")
         
@@ -764,7 +764,8 @@ def ask_opus_4(issue):
     # Common request data for both APIs
     data = {
         "model": "claude-opus-4-1-20250805",
-        "max_tokens": 1024,
+        "group": "claude",
+        # "max_tokens": 8192,
         "messages": [
             {
                 "role": "user",
@@ -773,27 +774,11 @@ def ask_opus_4(issue):
         ]
     }
     
-    # Debug prints
-    print(f"DEBUG: Request URL: {url}")
-    print(f"DEBUG: Headers: {headers}")
-    print(f"DEBUG: Model: {data['model']}")
-    print(f"DEBUG: Prompt length: {len(full_prompt)} characters")
-    print("DEBUG: Sending request...")
-    
     try:
         response = requests.post(url, headers=headers, json=data)
-        
-        # Debug response info
-        print(f"DEBUG: Response status code: {response.status_code}")
-        print(f"DEBUG: Response headers: {dict(response.headers)}")
-        
-        if response.status_code != 200:
-            print(f"DEBUG: Response body: {response.text[:500]}")  # First 500 chars of error response
-        
         response.raise_for_status()
         
         json_response = response.json()
-        print(f"DEBUG: Response JSON keys: {json_response.keys()}")
         
         text = json_response["content"][0]["text"]
         print(text)
