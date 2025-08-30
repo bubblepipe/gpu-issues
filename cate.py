@@ -16,7 +16,8 @@ from issue import Issue
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
-CATEGORIZED_FILE_PATH = '/Users/bubblepipe/repo/gpu-bugs/selected_examples.json'
+# CATEGORIZED_FILE_PATH = '/Users/bubblepipe/repo/gpu-bugs/selected_examples.json'
+CATEGORIZED_FILE_PATH = '/Users/bubblepipe/repo/gpu-bugs/selected25.json'
 # CATEGORIZED_FILE_PATH = '/Users/bubblepipe/repo/gpu-bugs/selected50.json'
 USE_CATEGORIZED_FILE = True # Set to False to select fresh issues
 # USE_CATEGORIZED_FILE = False  # Set to False to select fresh issues
@@ -26,13 +27,17 @@ NUM_PER_FRAMEWORK = 10
 # Options: "gemini", "gemini-pro", "ollama", "opus", "gpt5", "dummy"
 # LLM_CHOICE = "gemini-pro"  
 # LLM_CHOICE = "dummy"  
-LLM_CHOICE = "gpt5"
-# LLM_CHOICE = "opus"  
+# LLM_CHOICE = "gpt5"
+LLM_CHOICE = "opus"  
 
 # GPT-5/OpenAI API Configuration
 # Set to "openai" for official OpenAI API or "neko" for NekoAPI alternative
 GPT_API_PROVIDER = "neko"  # Options: "openai" or "neko"
 NEKO_API_BASE = "https://nekoapi.com/v1"  # NekoAPI endpoint
+
+# Opus/Claude API Configuration
+# Set to "anthropic" for official Anthropic API or "neko" for NekoAPI alternative
+OPUS_API_PROVIDER = "neko"  # Options: "anthropic" or "neko"
 
 OLLAMA_MODEL = "qwen3:235b"  # Change this to match your available model
 
@@ -496,45 +501,6 @@ def ask_gemini_2_5_pro(issue):
         return Err(f"Unexpected error with Gemini Pro API: {e}")
 
 
-def ask_gemini_2_5_flash(issue):
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key:
-        return Err("GEMINI_API_KEY environment variable not set")
-    
-    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
-    headers = {
-        "Content-Type": "application/json",
-        "X-goog-api-key": api_key
-    }
-    data = {
-        "contents": [
-            {
-                "parts": [ { "text": f"{BUG_CATEGORIZATION_PROMPT}{issue['html_url']}" } ]
-            }
-        ]
-    }
-    
-    try:
-        response = requests.post(url, headers=headers, json=data)
-        response.raise_for_status()  # Raise an error for bad status codes
-        
-        # Extract the text from the response
-        json_response = response.json()
-        text = json_response['candidates'][0]['content']['parts'][0]['text']
-        
-        # Parse the LLM output and return the Result
-        return parse_llm_output(text)
-        
-    except requests.exceptions.RequestException as e:
-        return Err(f"Network error calling Gemini API: {e}")
-    except (IndexError, KeyError) as e:
-        return Err(f"Error parsing response from Gemini API: {e}. Response: {response.text if 'response' in locals() else 'No response'}")
-    except ValueError as e:
-        return Err(f"Invalid JSON response from Gemini API: {e}")
-    except Exception as e:
-        return Err(f"Unexpected error with Gemini API: {e}")
-
-
 def ask_gpt5(issue):
     """Query OpenAI's latest GPT model using the OpenAI API or compatible alternative."""
     import openai
@@ -759,25 +725,43 @@ Based on my analysis:
     # Parse and return the dummy response
     return parse_llm_output(dummy_response)
 
-def ask_sonnet_4(_):
-    return None
-
 def ask_opus_4(issue):
-    api_key = os.getenv("ANTHROPIC_API_KEY")
-    if not api_key:
-        return Err("ANTHROPIC_API_KEY environment variable not set")
+    """Query Claude Opus using Anthropic API or compatible alternative."""
     
     # Prepare the full prompt with issue content
     full_prompt = prepare_full_prompt(issue)
-    # print(full_prompt)
-    print()
-
-    url = "https://api.anthropic.com/v1/messages"
-    headers = {
-        "x-api-key": api_key,
-        "anthropic-version": "2023-06-01",  # This is still the latest stable version as of 2025
-        "content-type": "application/json"
-    }
+    
+    # Determine which API to use based on configuration
+    if OPUS_API_PROVIDER == "neko":
+        # Use NekoAPI endpoint for Claude models
+        api_key = os.getenv("NEKO_API_KEY")
+        if not api_key:
+            return Err("NEKO_API_KEY not found. Please set the NEKO_API_KEY environment variable.")
+        
+        # NekoAPI uses the same format as Anthropic API but different endpoint
+        url = f"{NEKO_API_BASE}/messages"
+        headers = {
+            "x-api-key": api_key,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json"
+        }
+        print(f"Using NekoAPI endpoint for Claude Opus 4.1: {url}")
+        
+    else:
+        # Use official Anthropic API
+        api_key = os.getenv("ANTHROPIC_API_KEY")
+        if not api_key:
+            return Err("ANTHROPIC_API_KEY environment variable not set")
+        
+        url = "https://api.anthropic.com/v1/messages"
+        headers = {
+            "x-api-key": api_key,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json"
+        }
+        print("Using Anthropic API")
+    
+    # Common request data for both APIs
     data = {
         "model": "claude-opus-4-1-20250805",
         "max_tokens": 1024,
@@ -789,25 +773,45 @@ def ask_opus_4(issue):
         ]
     }
     
+    # Debug prints
+    print(f"DEBUG: Request URL: {url}")
+    print(f"DEBUG: Headers: {headers}")
+    print(f"DEBUG: Model: {data['model']}")
+    print(f"DEBUG: Prompt length: {len(full_prompt)} characters")
+    print("DEBUG: Sending request...")
+    
     try:
         response = requests.post(url, headers=headers, json=data)
+        
+        # Debug response info
+        print(f"DEBUG: Response status code: {response.status_code}")
+        print(f"DEBUG: Response headers: {dict(response.headers)}")
+        
+        if response.status_code != 200:
+            print(f"DEBUG: Response body: {response.text[:500]}")  # First 500 chars of error response
+        
         response.raise_for_status()
         
         json_response = response.json()
+        print(f"DEBUG: Response JSON keys: {json_response.keys()}")
+        
         text = json_response["content"][0]["text"]
         print(text)
-        print()
         print()
         return parse_llm_output(text)
         
     except requests.exceptions.RequestException as e:
-        return Err(f"Network error calling Anthropic API: {e}")
+        provider_name = "NekoAPI" if OPUS_API_PROVIDER == "neko" else "Anthropic API"
+        return Err(f"Network error calling {provider_name}: {e}")
     except (IndexError, KeyError) as e:
-        return Err(f"Error parsing response from Anthropic API: {e}. Response: {response.text if 'response' in locals() else 'No response'}")
+        provider_name = "NekoAPI" if OPUS_API_PROVIDER == "neko" else "Anthropic API"
+        return Err(f"Error parsing response from {provider_name}: {e}. Response: {response.text if 'response' in locals() else 'No response'}")
     except ValueError as e:
-        return Err(f"Invalid JSON response from Anthropic API: {e}")
+        provider_name = "NekoAPI" if OPUS_API_PROVIDER == "neko" else "Anthropic API"
+        return Err(f"Invalid JSON response from {provider_name}: {e}")
     except Exception as e:
-        return Err(f"Unexpected error with Anthropic API: {e}")
+        provider_name = "NekoAPI" if OPUS_API_PROVIDER == "neko" else "Anthropic API"
+        return Err(f"Unexpected error with {provider_name}: {e}")
 
 
 def main():
