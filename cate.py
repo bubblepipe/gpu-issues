@@ -16,7 +16,7 @@ from issue import Issue
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
-CATEGORIZED_FILE_PATH = '/Users/bubblepipe/repo/gpu-bugs/selected25.json'
+CATEGORIZED_FILE_PATH = '/Users/bubblepipe/repo/gpu-bugs/selected_examples.json'
 # CATEGORIZED_FILE_PATH = '/Users/bubblepipe/repo/gpu-bugs/selected50.json'
 USE_CATEGORIZED_FILE = True # Set to False to select fresh issues
 # USE_CATEGORIZED_FILE = False  # Set to False to select fresh issues
@@ -24,9 +24,9 @@ USE_CATEGORIZED_FILE = True # Set to False to select fresh issues
 NUM_PER_FRAMEWORK = 10
 
 # Options: "gemini", "gemini-pro", "ollama", "opus", "dummy"
-LLM_CHOICE = "gemini-pro"  
+# LLM_CHOICE = "gemini-pro"  
 # LLM_CHOICE = "dummy"  
-# LLM_CHOICE = "opus"  
+LLM_CHOICE = "opus"  
 
 OLLAMA_MODEL = "qwen3:235b"  # Change this to match your available model
 
@@ -454,8 +454,6 @@ def ask_gemini_2_5_pro(issue):
     print(full_prompt)
     print()
 
-    exit()
-    
     url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent"
     headers = {
         "Content-Type": "application/json",
@@ -696,8 +694,9 @@ def ask_opus_4(issue):
     
     # Prepare the full prompt with issue content
     full_prompt = prepare_full_prompt(issue)
-    print(full_prompt)
+    # print(full_prompt)
     print()
+
     url = "https://api.anthropic.com/v1/messages"
     headers = {
         "x-api-key": api_key,
@@ -722,6 +721,7 @@ def ask_opus_4(issue):
         json_response = response.json()
         text = json_response["content"][0]["text"]
         print(text)
+        print()
         print()
         return parse_llm_output(text)
         
