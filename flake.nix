@@ -15,6 +15,7 @@
         pythonWithPackages = pythonPackages.python.withPackages (ps: with ps; [
           matplotlib
           numpy
+          openai
           requests
           result
         ]);
@@ -29,6 +30,7 @@
             echo "Python version: $(python --version)"
             python -c "import matplotlib; print(f'  - matplotlib {matplotlib.__version__}')"
             python -c "import numpy; print(f'  - numpy {numpy.__version__}')"
+            python -c "import openai; print(f'  - openai {openai.__version__}')"
             python -c "import requests; print(f'  - requests {requests.__version__}')"
             python -c "import result; print(f'  - result {result.__version__}')"
           '';

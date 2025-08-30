@@ -23,10 +23,16 @@ USE_CATEGORIZED_FILE = True # Set to False to select fresh issues
 
 NUM_PER_FRAMEWORK = 10
 
-# Options: "gemini", "gemini-pro", "ollama", "opus", "dummy"
+# Options: "gemini", "gemini-pro", "ollama", "opus", "gpt5", "dummy"
 # LLM_CHOICE = "gemini-pro"  
 # LLM_CHOICE = "dummy"  
-LLM_CHOICE = "opus"  
+LLM_CHOICE = "gpt5"
+# LLM_CHOICE = "opus"  
+
+# GPT-5/OpenAI API Configuration
+# Set to "openai" for official OpenAI API or "neko" for NekoAPI alternative
+GPT_API_PROVIDER = "neko"  # Options: "openai" or "neko"
+NEKO_API_BASE = "https://nekoapi.com/v1"  # NekoAPI endpoint
 
 OLLAMA_MODEL = "qwen3:235b"  # Change this to match your available model
 
@@ -529,6 +535,75 @@ def ask_gemini_2_5_flash(issue):
         return Err(f"Unexpected error with Gemini API: {e}")
 
 
+def ask_gpt5(issue):
+    """Query OpenAI's latest GPT model using the OpenAI API or compatible alternative."""
+    import openai
+    import os
+    
+    # Determine which API to use based on configuration
+    if GPT_API_PROVIDER == "neko":
+        # Use NekoAPI
+        api_key = os.getenv("NEKO_API_KEY")
+        if not api_key:
+            return Err("NEKO_API_KEY not found. Please set the NEKO_API_KEY environment variable.")
+        api_base = NEKO_API_BASE
+        print(f"Using NekoAPI endpoint: {api_base}")
+    else:
+        # Use OpenAI API
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            return Err("OPENAI_API_KEY not found. Please set the OPENAI_API_KEY environment variable.")
+        api_base = None  # Use default OpenAI endpoint
+        print("Using OpenAI API")
+    
+    # Prepare the full prompt with issue content
+    full_prompt = prepare_full_prompt(issue)
+    
+    try:
+        # Initialize OpenAI client
+        if api_base:
+            # Use alternative API endpoint
+            client = openai.OpenAI(
+                api_key=api_key,
+                base_url=api_base
+            )
+        else:
+            # Use default OpenAI API
+            client = openai.OpenAI(api_key=api_key)
+        
+        response = client.chat.completions.create(
+            model="gpt-5",  
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are an expert at analyzing GitHub issues for GPU-accelerated machine learning frameworks. Analyze the issue thoroughly and provide categorization codes."
+                },
+                {
+                    "role": "user",
+                    "content": full_prompt
+                }
+            ],
+        )
+        
+        # Extract the response text
+        text = response.choices[0].message.content
+        print()
+        print(text)
+        print()
+        return parse_llm_output(text)
+        
+    except openai.APIError as e:
+        return Err(f"OpenAI API error: {e}")
+    except openai.APIConnectionError as e:
+        return Err(f"Failed to connect to OpenAI API: {e}")
+    except openai.RateLimitError as e:
+        return Err(f"OpenAI API rate limit exceeded: {e}")
+    except openai.AuthenticationError as e:
+        return Err(f"OpenAI API authentication failed: {e}")
+    except Exception as e:
+        return Err(f"Unexpected error with OpenAI API: {e}")
+
+
 def ask_local_ollama(issue):
     """Query Ollama API on remote h100 server with full issue content including comments."""
     import subprocess
@@ -780,6 +855,8 @@ def main():
             result = ask_local_ollama(issue)
         elif LLM_CHOICE == "opus":
             result = ask_opus_4(issue)
+        elif LLM_CHOICE == "gpt5":
+            result = ask_gpt5(issue)
         elif LLM_CHOICE == "dummy":
             result = ask_dummy(issue)
         else:
