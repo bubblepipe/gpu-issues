@@ -763,9 +763,9 @@ def ask_opus_4(issue):
     
     # Common request data for both APIs
     data = {
-        "model": "claude-opus-4-1-20250805",
+        "model": "claude-opus-4-1-20250805-thinking", 
         "group": "claude",
-        # "max_tokens": 8192,
+        "temperature": 0.1,
         "messages": [
             {
                 "role": "user",
@@ -780,7 +780,23 @@ def ask_opus_4(issue):
         
         json_response = response.json()
         
-        text = json_response["content"][0]["text"]
+        # Handle different response formats (with or without thinking)
+        content = json_response.get("content", [])
+        text = None
+        
+        # Look for the text content (skip thinking content)
+        for item in content:
+            if isinstance(item, dict) and item.get("type") == "text":
+                text = item.get("text", "")
+                break
+        
+        # Fallback to old format if no text type found
+        if text is None and content and isinstance(content[0], dict):
+            text = content[0].get("text", "")
+        
+        if not text:
+            raise KeyError("No text content found in response")
+            
         print(text)
         print()
         return parse_llm_output(text)
