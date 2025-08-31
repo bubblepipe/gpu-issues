@@ -2,6 +2,7 @@
 
 import glob
 import json
+import json5
 import sys
 from cates import (
     IsReallyBug, UserPerspective, DeveloperPerspective, AcceleratorSpecific, PlatformSpecificity,
@@ -123,7 +124,7 @@ def load_categorized_json_files(pattern):
     for file in result_files:
         try:
             with open(file, 'r') as f:
-                json_data = json.load(f)
+                json_data = json5.load(f)
                 all_issues.extend(json_data)
         except FileNotFoundError:
             print(f"File not found: {file}")

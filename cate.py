@@ -1,6 +1,6 @@
 import json
+import json5
 import random
-from sre_parse import CATEGORIES
 import requests
 import os
 import sys
@@ -17,8 +17,9 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
 # CATEGORIZED_FILE_PATH = '/Users/bubblepipe/repo/gpu-bugs/selected_examples.json'
-CATEGORIZED_FILE_PATH = '/Users/bubblepipe/repo/gpu-bugs/selected25.json'
+# CATEGORIZED_FILE_PATH = '/Users/bubblepipe/repo/gpu-bugs/selected25.json'
 # CATEGORIZED_FILE_PATH = '/Users/bubblepipe/repo/gpu-bugs/selected50.json'
+CATEGORIZED_FILE_PATH = '/Users/bubblepipe/repo/gpu-bugs/selected50_tail25.json'
 USE_CATEGORIZED_FILE = True # Set to False to select fresh issues
 # USE_CATEGORIZED_FILE = False  # Set to False to select fresh issues
 
@@ -46,7 +47,7 @@ def load_issues_from_categorized_file(categorized_file_path, issue_groups):
     """Load issues from a previously categorized JSON file."""
     try:
         with open(categorized_file_path, 'r') as f:
-            categorized_data = json.load(f)
+            categorized_data = json5.load(f)
         
         # Extract URLs from categorized data
         all_selected_issues = []
@@ -299,6 +300,28 @@ def fetch_mentioned_issue_content(url, cache={}):
                                     content += f"\nComment {i} by {user}:\n{body}\n"
                     except:
                         pass  # Ignore comment fetching errors
+                
+                # For Pull Requests, fetch the diff
+                if '/pull/' in url:
+                    try:
+                        # Use the diff endpoint for the PR
+                        diff_headers = headers.copy()
+                        diff_headers['Accept'] = 'application/vnd.github.v3.diff'
+                        
+                        diff_response = requests.get(api_url, headers=diff_headers, timeout=30)
+                        if diff_response.status_code == 200:
+                            diff_text = diff_response.text
+                            # Limit diff size to avoid overwhelming the prompt
+                            max_diff_length = 3000
+                            if len(diff_text) > max_diff_length:
+                                diff_text = diff_text[:max_diff_length] + "\n... (diff truncated)"
+                            
+                            content += "\n=== CODE CHANGES (DIFF) ===\n"
+                            content += diff_text
+                            content += "\n"
+                    except Exception as e:
+                        print(f"Failed to fetch diff for PR {url}: {e}")
+                        # Continue without diff if it fails
                 
                 # Cache the result
                 cache[url] = content
@@ -730,7 +753,10 @@ def ask_opus_4(issue):
     
     # Prepare the full prompt with issue content
     full_prompt = prepare_full_prompt(issue)
-    
+    print()
+    print(full_prompt)
+    print()
+
     # Determine which API to use based on configuration
     if OPUS_API_PROVIDER == "neko":
         # Use NekoAPI endpoint for Claude models
@@ -852,9 +878,7 @@ def main():
         print(f"{title} \n{url}")
         
         # Choose which LLM to use based on configuration
-        if LLM_CHOICE == "gemini":
-            result = ask_gemini_2_5_flash(issue)
-        elif LLM_CHOICE == "gemini-pro":
+        if LLM_CHOICE == "gemini-pro":
             result = ask_gemini_2_5_pro(issue)
         elif LLM_CHOICE == "ollama":
             result = ask_local_ollama(issue)
@@ -865,7 +889,8 @@ def main():
         elif LLM_CHOICE == "dummy":
             result = ask_dummy(issue)
         else:
-            result = ask_gemini_2_5_flash(issue)  # Default to Gemini Flash
+            print(f"Unknown LLM choice: {LLM_CHOICE}")
+            sys.exit(1)
             
         if result.is_err():
             error_msg = result.unwrap_err()
@@ -880,6 +905,7 @@ def main():
         for item in categorization:
             print(" - " + item.value)
         print()
+        exit() # Temporary exit for testing one issue at a time
     
     # Save categorized issues to a file
     if issues_categorized:

@@ -1,4 +1,4 @@
-     You are tasked with analyzing a GitHub issue and categorizing it across 
+You are tasked with analyzing a GitHub issue and categorizing it across 
 multiple dimensions. Please fetch and carefully analyze the issue at the 
 provided URL, then categorize it according to the following framework.
 
@@ -27,7 +27,7 @@ What is the symptom of the bug from the perspective of the framework users?
 
 ### 3. Root Cause Analysis
 What is the root cause of the bug from the perspective of the framework developers?
-- **3.a**: Design flaw - issue with system architecture design
+- **3.a**: Design flaw - issue with system architecture design, algorithm logic, or fundamental implementation approach. This includes incorrect algorithmic choices, wrong operators or mathematical operations, flawed data flow, or misunderstanding of the intended behavior.
 - **3.b**: Missing safeguards - Lacking input validation, bounds checks, error handling, edge case handling or special value (like empty tensor or NaN floating point) handling 
 - **3.c**: Concurrency issue - Race conditions, synchronization problems, or distributed execution issues
 - **3.d**: Configuration error - Wrong algorithm selection (including selecting dedicated kernel on input size, data properties and  memory access patterns like sparse or dense), precision settings(float32 vs float16, int8 vs fp8, etc), driver or library versions (accelerator driver version, cuda toolchain version, etc), or any other environment setup. 

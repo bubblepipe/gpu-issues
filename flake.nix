@@ -13,6 +13,7 @@
         
         pythonPackages = pkgs.python311Packages;
         pythonWithPackages = pythonPackages.python.withPackages (ps: with ps; [
+          json5
           matplotlib
           numpy
           openai
@@ -28,6 +29,7 @@
 
           shellHook = ''
             echo "Python version: $(python --version)"
+            python -c "import json5; print(f'  - json5 {json5.__version__}')"
             python -c "import matplotlib; print(f'  - matplotlib {matplotlib.__version__}')"
             python -c "import numpy; print(f'  - numpy {numpy.__version__}')"
             python -c "import openai; print(f'  - openai {openai.__version__}')"
