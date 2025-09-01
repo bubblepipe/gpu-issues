@@ -64,6 +64,12 @@ class Issue:
     closed_by_pr: Optional[PullRequest] = None  # PR that closed this issue
     assignees_from_timeline: List[str] = field(default_factory=list)  # Self-assigned users
     
+    # Comprehensive tracking of all mentioned URLs
+    all_mentioned_urls: set = field(default_factory=set)  # All unique URLs mentioned
+    mentioned_urls_by_source: Dict[str, List[str]] = field(default_factory=dict)  # URLs grouped by source
+    content_mentioned_issues: List[str] = field(default_factory=list)  # Issues from body/comments
+    content_mentioned_prs: List[str] = field(default_factory=list)  # PRs from body/comments
+    
     def fetch_timeline(self):
         """Fetch and parse timeline data to populate mentioned_issues and mentioned_prs"""
         if not self.timeline_url:
@@ -358,6 +364,88 @@ class Issue:
                 login = assignee.get('login')
                 if login and login not in self.assignees_from_timeline:
                     self.assignees_from_timeline.append(login)
+    
+    def collect_all_mentions(self):
+        """Collect all mentioned issues/PRs from all sources and deduplicate."""
+        # Import here to avoid circular dependency
+        from cate import extract_github_urls_from_text
+        
+        # Clear existing collections
+        self.all_mentioned_urls.clear()
+        self.mentioned_urls_by_source.clear()
+        self.content_mentioned_issues.clear()
+        self.content_mentioned_prs.clear()
+        
+        # Get base repo for resolving shorthand references
+        base_repo_match = re.match(r'(https://github\.com/[\w\-]+/[\w\-]+)', self.html_url)
+        base_repo_url = base_repo_match.group(1) if base_repo_match else None
+        
+        # 1. Extract from content (body + comments)
+        content = self.to_string_pretty()
+        content_urls = extract_github_urls_from_text(content, base_repo_url)
+        
+        for url in content_urls:
+            if url != self.html_url:  # Skip self-reference
+                self.all_mentioned_urls.add(url)
+                self.mentioned_urls_by_source.setdefault('CONTENT', []).append(url)
+                
+                # Classify as issue or PR
+                if '/pull/' in url:
+                    self.content_mentioned_prs.append(url)
+                else:
+                    self.content_mentioned_issues.append(url)
+        
+        # 2. Add from timeline PRs
+        for pr in self.mentioned_prs:
+            self.all_mentioned_urls.add(pr.html_url)
+            self.mentioned_urls_by_source.setdefault('TIMELINE_PR', []).append(pr.html_url)
+        
+        # 3. Add from timeline issues
+        for issue_dict in self.mentioned_issues:
+            if issue_dict.get('url'):
+                url = issue_dict['url']
+                self.all_mentioned_urls.add(url)
+                self.mentioned_urls_by_source.setdefault('TIMELINE_ISSUE', []).append(url)
+    
+    def get_mention_stats(self):
+        """Get statistics about mentioned issues/PRs."""
+        return {
+            'total_unique': len(self.all_mentioned_urls),
+            'from_content': len(self.mentioned_urls_by_source.get('CONTENT', [])),
+            'from_timeline_pr': len(self.mentioned_urls_by_source.get('TIMELINE_PR', [])),
+            'from_timeline_issue': len(self.mentioned_urls_by_source.get('TIMELINE_ISSUE', [])),
+            'content_prs': len(self.content_mentioned_prs),
+            'content_issues': len(self.content_mentioned_issues),
+            'has_duplicates': self.has_duplicate_mentions()
+        }
+    
+    def has_duplicate_mentions(self):
+        """Check if any URL appears in multiple sources."""
+        all_urls_list = []
+        for urls in self.mentioned_urls_by_source.values():
+            all_urls_list.extend(urls)
+        return len(all_urls_list) != len(set(all_urls_list))
+    
+    def print_mention_report(self):
+        """Print a detailed report of all mentioned issues/PRs."""
+        stats = self.get_mention_stats()
+        print(f"\n=== Mention Report for {self.html_url} ===")
+        print(f"Total unique URLs: {stats['total_unique']}")
+        print(f"  From content: {stats['from_content']}")
+        print(f"  From timeline PRs: {stats['from_timeline_pr']}")
+        print(f"  From timeline issues: {stats['from_timeline_issue']}")
+        print(f"  Content PRs: {stats['content_prs']}")
+        print(f"  Content issues: {stats['content_issues']}")
+        print(f"  Has duplicates: {stats['has_duplicates']}")
+        
+        if self.all_mentioned_urls:
+            print("\nAll mentioned URLs:")
+            for url in sorted(self.all_mentioned_urls):
+                sources = []
+                for source, urls in self.mentioned_urls_by_source.items():
+                    if url in urls:
+                        sources.append(source)
+                print(f"  - {url} (from: {', '.join(sources)})")
     
     def to_string_pretty(self) -> str:
         """Format issue for display"""

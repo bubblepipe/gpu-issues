@@ -223,6 +223,168 @@ def parse_platform_specificity(code):
     return PLATFORM_SPECIFICITY_LOOKUP.get(code)
 
 
+def extract_github_urls_from_text(text, base_repo_url=None):
+    """Extract GitHub issue and PR URLs from text content, including shorthand references.
+    
+    Args:
+        text: Text content to search for URLs
+        base_repo_url: Base repository URL (e.g., "https://github.com/pytorch/pytorch") 
+                      for resolving shorthand references like #123
+    
+    Returns:
+        List of GitHub issue/PR URLs found in the text
+    """
+    import re
+    urls = []
+    
+    # Debug: Check if we're looking at text with #10394 or #10395
+    # if '#10394' in text or '#10395' in text:
+    #     print(f"DEBUG: Found #10394 or #10395 in text! Base repo: {base_repo_url}")
+    #     print(f"DEBUG: Text snippet: {text[:200]}...")
+    
+    # 1. Extract full GitHub URLs
+    full_url_pattern = r'https://github\.com/([\w\-]+)/([\w\-]+)/(?:issues|pull)/(\d+)'
+    full_urls = re.findall(full_url_pattern, text)
+    for owner, repo, number in full_urls:
+        urls.append(f'https://github.com/{owner}/{repo}/issues/{number}')
+    
+    # 2. Extract cross-repo references (owner/repo#123)
+    cross_repo_pattern = r'(?:^|[^/\w])([\w\-]+)/([\w\-]+)#(\d+)'
+    cross_refs = re.findall(cross_repo_pattern, text)
+    for owner, repo, number in cross_refs:
+        # Validate that these look like real GitHub owner/repo names
+        if len(owner) > 0 and len(repo) > 0 and not owner.isdigit():
+            urls.append(f'https://github.com/{owner}/{repo}/issues/{number}')
+    
+    # 3. Extract same-repo references (#123) - only if base_repo_url is provided
+    if base_repo_url:
+        # Clean up base URL to ensure it's in the right format
+        base_match = re.match(r'https://github\.com/([\w\-]+)/([\w\-]+)', base_repo_url)
+        if base_match:
+            base_owner, base_repo = base_match.groups()
+            
+            # Match #123 style references (but not if part of owner/repo#123)
+            # Also exclude stack trace patterns like "#10 0x00007..." 
+            # Stack traces have #N followed by space and hex address (0x...)
+            # Use word boundary after the number to ensure we get the full number
+            same_repo_pattern = r'(?:^|[^/\w])#(\d+)\b(?!\s+0x)'
+            same_repo_refs = re.findall(same_repo_pattern, text)
+            for number in same_repo_refs:
+                url = f'https://github.com/{base_owner}/{base_repo}/issues/{number}'
+                # if '10394' in number or '10395' in number:
+                #     print(f"DEBUG: Extracted #{number} -> {url}")
+                urls.append(url)
+    
+    # Remove duplicates while preserving order
+    seen = set()
+    unique_urls = []
+    for url in urls:
+        # Normalize /pull/ to /issues/ for consistency
+        url = url.replace('/pull/', '/issues/')
+        if url not in seen:
+            seen.add(url)
+            unique_urls.append(url)
+    
+    return unique_urls
+
+
+def fetch_mentioned_issue_content_recursive(url, cache={}, visited=None, depth=0, max_depth=2):
+    """Recursively fetch content of mentioned issues/PRs with cycle detection.
+    
+    Args:
+        url: GitHub issue/PR URL
+        cache: Dictionary to cache fetched content
+        visited: Set of URLs already being processed (for cycle detection)
+        depth: Current recursion depth
+        max_depth: Maximum recursion depth allowed
+    
+    Returns:
+        Dictionary with 'content' (string) and 'related' (list of related content)
+    """
+    # Initialize visited set if not provided
+    if visited is None:
+        visited = set()
+    
+    # Debug: Track recursion for specific issues
+    # if '10394' in url or '10395' in url:
+    #     print(f"DEBUG: Recursive fetch for {url} at depth {depth}")
+    
+    # Check if we've reached max depth
+    if depth >= max_depth:
+        # if '10394' in url or '10395' in url:
+        #     print(f"DEBUG: Max depth reached for {url}!")
+        return None
+    
+    # Check for cycles
+    if url in visited:
+        print(f"Cycle detected: {url} already being processed")
+        return None
+    
+    # Add to visited set
+    visited.add(url)
+    
+    # Fetch the main content
+    content = fetch_mentioned_issue_content(url, cache)
+    if not content:
+        visited.remove(url)  # Remove from visited if fetch failed
+        return None
+    
+    # Extract base repo URL from the current URL for resolving shorthand references
+    import re
+    base_repo_match = re.match(r'(https://github\.com/[\w\-]+/[\w\-]+)', url)
+    base_repo_url = base_repo_match.group(1) if base_repo_match else None
+    
+    # Extract URLs from the fetched content, including shorthand references
+    mentioned_urls = extract_github_urls_from_text(content, base_repo_url)
+    
+    # Debug: Show what URLs were extracted
+    # if mentioned_urls and depth < 3:
+    #     print(f"DEBUG: At depth {depth}, extracted {len(mentioned_urls)} URLs from {url}")
+    #     for i, u in enumerate(mentioned_urls[:5]):
+    #         print(f"  {i+1}. {u}")
+    
+    # Recursively fetch mentioned issues/PRs
+    related_content = []
+    # Debug: Show which URLs will be processed  
+    # if mentioned_urls:
+    #     print(f"DEBUG: Processing first 3 of {len(mentioned_urls)} URLs at depth {depth}")
+    #     for i, u in enumerate(mentioned_urls[:3]):
+    #         status = "SKIP (visited)" if u in visited else "FETCH"
+    #         print(f"  {i+1}. {u} - {status}")
+    
+    for mentioned_url in mentioned_urls[:3]:  # Limit to 3 related items per level
+        if mentioned_url not in visited:  # Skip if already visited
+            # if '10394' in mentioned_url or '10395' in mentioned_url:
+            #     print(f"DEBUG: About to recursively fetch {mentioned_url} at depth {depth+1}")
+            related = fetch_mentioned_issue_content_recursive(
+                mentioned_url, cache, visited, depth + 1, max_depth
+            )
+            if related:
+                # Extract issue/PR number from URL for labeling
+                import re
+                match = re.search(r'/(\d+)$', mentioned_url)
+                number = match.group(1) if match else "Unknown"
+                issue_or_pr = "PULL REQUEST" if '/pull/' in mentioned_url else "ISSUE"
+                
+                related_item = {
+                    'url': mentioned_url,
+                    'number': number,
+                    'type': issue_or_pr,
+                    'depth': depth + 1,
+                    'content': related['content'] if isinstance(related, dict) else related,
+                    'related': related.get('related', []) if isinstance(related, dict) else []
+                }
+                related_content.append(related_item)
+    
+    # Remove from visited set after processing
+    visited.remove(url)
+    
+    return {
+        'content': content,
+        'related': related_content
+    }
+
+
 def fetch_mentioned_issue_content(url, cache={}):
     """Fetch the content of a mentioned issue or PR from GitHub API.
     
@@ -298,6 +460,10 @@ def fetch_mentioned_issue_content(url, cache={}):
                                     user = comment.get('user', {}).get('login', 'Unknown')
                                     body = comment.get('body', '(empty)')
                                     content += f"\nComment {i} by {user}:\n{body}\n"
+                                    # Debug: Check if this comment mentions our issues
+                                    # if '#10394' in body or '#10395' in body:
+                                    #     print(f"DEBUG: Comment {i} by {user} mentions #10394 or #10395!")
+                                    #     print(f"DEBUG: Comment text: {body[:200]}...")
                     except:
                         pass  # Ignore comment fetching errors
                 
@@ -432,48 +598,95 @@ def parse_llm_output(text):
 
 
 
+def format_recursive_mentions(related_items, indent_level=0):
+    """Format recursively fetched related issues/PRs with proper indentation.
+    
+    Args:
+        related_items: List of related items with content and sub-relations
+        indent_level: Current indentation level for nested items
+    
+    Returns:
+        Formatted string with all related content
+    """
+    formatted = ""
+    indent = "  " * indent_level
+    
+    for item in related_items:
+        # Add header for this item
+        formatted += f"\n\n{indent}=== {item['type']} #{item['number']} (Depth {item['depth']}) ===\n"
+        formatted += item['content']
+        
+        # Recursively add any related items from this one
+        if item.get('related'):
+            formatted += format_recursive_mentions(item['related'], indent_level + 1)
+    
+    return formatted
+
+
 def prepare_full_prompt(issue):
     # Fetch timeline data for this specific issue only when needed
     if hasattr(issue, 'fetch_timeline'):
         issue.fetch_timeline()
     
+    # Collect all mentions using the Issue's method
+    issue.collect_all_mentions()
+    
+    # Print mention report for debugging
+    issue.print_mention_report()
+    
     issue_content = issue.to_string_pretty()
     full_prompt = BUG_CATEGORIZATION_PROMPT + "\n\nISSUE CONTENT:\n" + issue_content
     
-    # Append mentioned issues and PRs from timeline
-    mentioned_content = []
+    # Prepare for recursive fetching
     content_cache = {}  # Cache to avoid re-fetching
+    visited = set()  # Track visited URLs to prevent cycles
+    all_related_content = []
     
-    # Limit total number of mentioned items to avoid huge prompts
+    # Process all collected unique URLs with recursive fetching
     max_mentioned_items = 10
-    items_added = 0
     
-    # Add mentioned PRs
-    if hasattr(issue, 'mentioned_prs') and issue.mentioned_prs:
-        for pr in issue.mentioned_prs[:max_mentioned_items]:
-            if items_added >= max_mentioned_items:
-                break
-            pr_content = fetch_mentioned_issue_content(pr.html_url, content_cache)
-            if pr_content:
-                mentioned_content.append(f"\n\n=== MENTIONED PULL REQUEST #{pr.number} ===\n{pr_content}")
-                items_added += 1
+    # Get source mapping for each URL
+    url_to_sources = {}
+    for source, urls in issue.mentioned_urls_by_source.items():
+        for url in urls:
+            if url not in url_to_sources:
+                url_to_sources[url] = []
+            url_to_sources[url].append(source)
     
-    # Add mentioned issues
-    if hasattr(issue, 'mentioned_issues') and issue.mentioned_issues:
-        for mentioned_issue in issue.mentioned_issues[:max_mentioned_items - items_added]:
-            if items_added >= max_mentioned_items:
-                break
-            issue_url = mentioned_issue.get('url')
-            if issue_url:
-                issue_content = fetch_mentioned_issue_content(issue_url, content_cache)
-                if issue_content:
-                    mentioned_content.append(f"\n\n=== MENTIONED ISSUE #{mentioned_issue.get('number')} ===\n{issue_content}")
-                    items_added += 1
+    # Process unique URLs (from the deduplicated set)
+    for url in list(issue.all_mentioned_urls)[:max_mentioned_items]:
+        result = fetch_mentioned_issue_content_recursive(
+            url, content_cache, visited, depth=0
+        )
+        
+        if result:
+            # Extract issue/PR number from URL
+            import re
+            match = re.search(r'/(\d+)$', url)
+            number = match.group(1) if match else "Unknown"
+            
+            # Get all sources for this URL
+            sources = url_to_sources.get(url, ['UNKNOWN'])
+            source_str = ', '.join(sources)
+            
+            # Determine if it's a PR or issue
+            is_pr = '/pull/' in url or 'Pull Request' in result.get('content', '')[:200]
+            issue_or_pr = "PULL REQUEST" if is_pr else "ISSUE"
+            
+            related_item = {
+                'url': url,
+                'number': number,
+                'type': f'{issue_or_pr} ({source_str})',
+                'depth': 0,
+                'content': result['content'],
+                'related': result.get('related', [])
+            }
+            all_related_content.append(related_item)
     
-    # Append all mentioned content to the prompt
-    if mentioned_content:
-        full_prompt += "\n\n--- RELATED ISSUES AND PULL REQUESTS FROM TIMELINE ---"
-        full_prompt += "".join(mentioned_content)
+    # Format and append all related content
+    if all_related_content:
+        full_prompt += "\n\n--- RELATED ISSUES AND PULL REQUESTS (WITH NESTED MENTIONS) ---"
+        full_prompt += format_recursive_mentions(all_related_content)
     
     return full_prompt
 
@@ -604,7 +817,7 @@ def ask_local_ollama(issue):
     # Prepare the full prompt with issue content
     full_prompt = prepare_full_prompt(issue)
     
-    # Update system message to encourage reasoning before the final answer
+# Update system message to encourage reasoning befoyere the final answer
     system_message = "Please analyze the issue thoroughly, provide your reasoning, and put the categorization codes in the last line in the format: 1.x, 2.x, 3.x, 4.x, 5.x"
     
     # Prepare JSON data for curl
@@ -756,7 +969,7 @@ def ask_opus_4(issue):
     print()
     print(full_prompt)
     print()
-
+    
     # Determine which API to use based on configuration
     if OPUS_API_PROVIDER == "neko":
         # Use NekoAPI endpoint for Claude models
