@@ -128,6 +128,10 @@ most specific and fundamental one. For example, if an issue is both a
 **Reasoning**: Platform-specific bug in TensorRT 8.0.1.6 on Jetson that was fixed in version 8.4, showing missing safeguards in the shuffle builder.
 **Correct Answer**: `1.d, 2.a, 3.b, 4.a, 5.a`
 
+### Example 8
+Summary: User questioned the calculation of offset_y in the _attn_fwd_tma function, believing offset_y = off_z + off_h * N_CTX should be offset_y = off_hz * N_CTX. Developer pr0f3ss explained this is not a bug but an intentional design choice - the non-intuitive calculation processes the same attention head across batches first rather than all heads in one batch, optimizing for GPU memory coalescing and reduced memory latency. The developer provided a concrete example showing how the user's proposed calculation would incorrectly space memory locations (offset 56 vs correct offset 25 for batch=1, head=3). The issue was closed as "not planned" with no code changes needed, as the implementation works correctly despite its surprising appearance.
+Reasoning: The code works as designed but the design is unconventional and surprising enough that a user mistook it for a bug. The offset calculation prioritizes performance optimization over intuitive code structure.
+Correct Answer: 1.b, 2.g, 3.f, 4.d, 5.d
 
 ## Your Task
 The content of the issue is as follows. Every link mentioned in the issue is 

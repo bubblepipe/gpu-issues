@@ -19,7 +19,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 # CATEGORIZED_FILE_PATH = '/Users/bubblepipe/repo/gpu-bugs/selected_examples.json'
 # CATEGORIZED_FILE_PATH = '/Users/bubblepipe/repo/gpu-bugs/selected25.json'
 # CATEGORIZED_FILE_PATH = '/Users/bubblepipe/repo/gpu-bugs/selected50.json'
-CATEGORIZED_FILE_PATH = '/Users/bubblepipe/repo/gpu-bugs/selected50_tail25.json'
+CATEGORIZED_FILE_PATH = '/Users/bubblepipe/repo/gpu-bugs/selected50_head25.json'
 USE_CATEGORIZED_FILE = True # Set to False to select fresh issues
 # USE_CATEGORIZED_FILE = False  # Set to False to select fresh issues
 
@@ -82,16 +82,35 @@ def has_unwanted_labels(issue):
             return True
     return False
 
+def has_closing_no_activity_comment(issue):
+    """Check if the issue's last comment starts with 'Closing since no activity'."""
+    # First fetch comments if not already fetched
+    if not hasattr(issue, 'comments_data'):
+        fetch_issue_comments(issue)
+    
+    # Check if there are any comments
+    if not hasattr(issue, 'comments_data') or not issue.comments_data:
+        return False
+    
+    # Get the last comment
+    last_comment = issue.comments_data[-1]
+    comment_body = last_comment.get('body', '').strip()
+    
+    # Check if it starts with "Closing since no activity" (case-insensitive)
+    return comment_body.lower().startswith('closing since no activity')
+
 def select_random_uncategorized_issues(issue_groups, categorized_urls, num_per_framework=NUM_PER_FRAMEWORK):
     """Select random uncategorized issues from each framework."""
     all_selected_issues = []
     for issues in issue_groups:
-        # Find issues that haven't been categorized yet, have at least one comment, and don't have unwanted labels
+        # Find issues that haven't been categorized yet, have at least one comment, 
+        # don't have unwanted labels, and don't have "closing since no activity" as last comment
         uncategorized_issues = [issue for issue in issues 
                               if issue.html_url not in categorized_urls 
                               and hasattr(issue, 'comments_count') 
                               and issue.comments_count > 0
-                              and not has_unwanted_labels(issue)]
+                              and not has_unwanted_labels(issue)
+                              and not has_closing_no_activity_comment(issue)]
         num_to_select = min(num_per_framework, len(uncategorized_issues))
         if num_to_select > 0:
             selected_issues = random.sample(uncategorized_issues, num_to_select)
@@ -288,7 +307,7 @@ def extract_github_urls_from_text(text, base_repo_url=None):
     return unique_urls
 
 
-def fetch_mentioned_issue_content_recursive(url, cache={}, visited=None, depth=0, max_depth=2):
+def fetch_mentioned_issue_content_recursive(url, cache={}, visited=None, depth=0, max_depth=3):
     """Recursively fetch content of mentioned issues/PRs with cycle detection.
     
     Args:
@@ -1103,7 +1122,6 @@ def main():
             result = ask_dummy(issue)
         else:
             print(f"Unknown LLM choice: {LLM_CHOICE}")
-            sys.exit(1)
             
         if result.is_err():
             error_msg = result.unwrap_err()
