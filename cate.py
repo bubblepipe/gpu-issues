@@ -1116,7 +1116,7 @@ def main():
         categorization = result.unwrap()
         issues_categorized.append((title, url, categorization[0], categorization[1], categorization[2], categorization[3], categorization[4]))
         for item in categorization:
-            print(" - " + item.value)
+            print(" - " + item.value, file=sys.stderr)
         print()
         exit() # Temporary exit for testing one issue at a time
     
