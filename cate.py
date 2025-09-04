@@ -1136,8 +1136,7 @@ def main():
         for item in categorization:
             print(" - " + item.value, file=sys.stderr)
         print()
-        exit() # Temporary exit for testing one issue at a time
-    
+        
     # Save categorized issues to a file
     if issues_categorized:
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
