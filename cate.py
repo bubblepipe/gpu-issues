@@ -19,17 +19,21 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 # CATEGORIZED_FILE_PATH = '/Users/bubblepipe/repo/gpu-bugs/selected_examples.json'
 # CATEGORIZED_FILE_PATH = '/Users/bubblepipe/repo/gpu-bugs/selected25.json'
 # CATEGORIZED_FILE_PATH = '/Users/bubblepipe/repo/gpu-bugs/selected50.json'
-CATEGORIZED_FILE_PATH = '/Users/bubblepipe/repo/gpu-bugs/selected50_tail25.json'
+CATEGORIZED_FILE_PATH = '/Users/bubblepipe/repo/gpu-bugs/selected50_head25.json'
 USE_CATEGORIZED_FILE = True # Set to False to select fresh issues
 # USE_CATEGORIZED_FILE = False  # Set to False to select fresh issues
 
 NUM_PER_FRAMEWORK = 10
 
 # Options: "gemini", "gemini-pro", "ollama", "opus", "gpt5", "dummy"
-# LLM_CHOICE = "gemini-pro"  
-# LLM_CHOICE = "dummy"  
+# LLM_CHOICE = "gemini-pro"
+# LLM_CHOICE = "dummy"
 # LLM_CHOICE = "gpt5"
-LLM_CHOICE = "opus"  
+LLM_CHOICE = "opus"
+
+# Conversation mode: When True, LLM can request additional information about mentioned issues/PRs
+# When False, uses the old one-shot mode with all related content pre-fetched
+CONVERSATION_MODE = True  
 
 # GPT-5/OpenAI API Configuration
 # Set to "openai" for official OpenAI API or "neko" for NekoAPI alternative
@@ -557,6 +561,94 @@ def fetch_mentioned_issue_content(url, cache={}):
     return None
 
 
+def parse_information_request(text):
+    """Parse LLM response to extract requested issue/PR numbers.
+
+    Returns:
+        List of issue/PR numbers that the LLM is requesting information about, or None if this is a final answer
+    """
+    import re
+
+    # Check if this looks like a final answer (contains the categorization codes)
+    if is_final_answer(text):
+        return None
+
+    matches = []
+
+    # Look for explicit requests in format "REQUEST: issue #1234" or "REQUEST: PR #5678"
+    request_pattern = r'REQUEST:\s*(?:issue|pr|pull request)\s*#(\d+)'
+    matches.extend(re.findall(request_pattern, text, re.IGNORECASE))
+
+    # Also look for questions about specific issues/PRs
+    question_pattern = r'(?:can you|could you|please)\s+(?:provide|show|fetch|get).*?(?:issue|pr|pull request)\s*#(\d+)'
+    matches.extend(re.findall(question_pattern, text, re.IGNORECASE))
+
+    # Look for "I need more information about #1234" patterns
+    info_pattern = r'(?:need|want|require)\s+(?:more\s+)?(?:information|details|context).*?#(\d+)'
+    matches.extend(re.findall(info_pattern, text, re.IGNORECASE))
+
+    return list(set(matches)) if matches else None  # Remove duplicates and return None if empty
+
+
+def is_final_answer(text):
+    """Check if the LLM response contains a final categorization answer."""
+    import re
+
+    # Look for the expected final line format: "1.x, 2.x, 3.x, 4.x, 5.x"
+    pattern = r'[1-5]\.[a-i],\s*[1-5]\.[a-i],\s*[1-5]\.[a-i],\s*[1-5]\.[a-i],\s*[1-5]\.[a-i]'
+
+    # Check if pattern exists in the text
+    return bool(re.search(pattern, text))
+
+
+def prepare_minimal_prompt(issue):
+    """Prepare a minimal prompt with just the issue content (no related issues)."""
+    # Fetch timeline and comments for this specific issue
+    if hasattr(issue, 'fetch_timeline'):
+        issue.fetch_timeline()
+
+    # Collect mentions but don't fetch them
+    issue.collect_all_mentions()
+
+    issue_content = issue.to_string_pretty()
+    return issue_content
+
+
+def prepare_conversation_prompt():
+    """Create the conversation-aware prompt that allows the LLM to request information."""
+    conversation_instructions = """You are tasked with analyzing a GitHub issue and categorizing it across
+multiple dimensions. You will be provided with the main issue content initially.
+
+## Important: You can request additional information
+
+If you need to understand referenced issues or pull requests to make an accurate categorization,
+you can request them using the following format:
+
+REQUEST: issue #1234
+REQUEST: PR #5678
+
+You can request multiple items in a single response. I will provide the content of those issues/PRs,
+and you can then continue your analysis.
+
+When you have enough information to categorize the issue, provide your final answer following the
+standard format ending with the categorization codes (e.g., "1.d, 2.c, 3.b, 4.a, 5.a").
+
+"""
+
+    # Load the standard prompt and prepend conversation instructions
+    path = os.path.join(os.path.dirname(__file__), "prompt.md")
+    with open(path, "r", encoding="utf-8") as f:
+        standard_prompt = f.read()
+
+    # Replace the beginning of the standard prompt with our conversation version
+    # Find where the "## Analysis Framework" section starts
+    framework_start = standard_prompt.find("## Analysis Framework")
+    if framework_start > 0:
+        return conversation_instructions + standard_prompt[framework_start:]
+    else:
+        return conversation_instructions + standard_prompt
+
+
 def parse_llm_output(text):
     # Split response by lines and get the last non-empty line
     lines = text.strip().split('\n')
@@ -980,9 +1072,198 @@ Based on my analysis:
     # Parse and return the dummy response
     return parse_llm_output(dummy_response)
 
-def ask_opus_4(issue):
-    """Query Claude Opus using Anthropic API or compatible alternative."""
-    
+def ask_opus_4_conversation(issue, debug_mode=False):
+    """Query Claude Opus in conversation mode where it can request additional information.
+
+    Args:
+        issue: The issue to analyze
+        debug_mode: If True, saves detailed prompts and responses to files
+    """
+
+    # Get base repo URL from the issue for resolving shorthand references
+    import re
+    import datetime
+
+    base_repo_match = re.match(r'(https://github\.com/[\w\-]+/[\w\-]+)', issue.html_url)
+    base_repo_url = base_repo_match.group(1) if base_repo_match else None
+
+    # Prepare initial minimal prompt
+    issue_content = prepare_minimal_prompt(issue)
+    conversation_prompt = prepare_conversation_prompt()
+
+    initial_prompt = conversation_prompt + "\n\nISSUE CONTENT:\n" + issue_content
+
+    # Debug: Setup debug directory
+    debug_dir = None
+    if debug_mode:
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        debug_dir = f"conversation_debug_{timestamp}"
+        os.makedirs(debug_dir, exist_ok=True)
+
+        with open(f"{debug_dir}/initial_prompt.txt", "w") as f:
+            f.write(initial_prompt)
+        print(f"\n[DEBUG] Saved initial prompt to {debug_dir}/initial_prompt.txt")
+
+    # Initialize conversation
+    messages = [
+        {
+            "role": "user",
+            "content": initial_prompt
+        }
+    ]
+
+    # Determine which API to use
+    if OPUS_API_PROVIDER == "neko":
+        api_key = os.getenv("NEKO_CLAUDE_API_KEY")
+        if not api_key:
+            return Err("NEKO_API_KEY not found. Please set the NEKO_API_KEY environment variable.")
+        url = f"{NEKO_API_BASE}/messages"
+        headers = {
+            "x-api-key": api_key,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json"
+        }
+        print(f"Using NekoAPI endpoint for Claude Opus 4.1 (conversation mode): {url}")
+    else:
+        api_key = os.getenv("ANTHROPIC_API_KEY")
+        if not api_key:
+            return Err("ANTHROPIC_API_KEY environment variable not set")
+        url = "https://api.anthropic.com/v1/messages"
+        headers = {
+            "x-api-key": api_key,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json"
+        }
+        print("Using Anthropic API (conversation mode)")
+
+    # Conversation loop
+    max_turns = 10
+    fetched_content_cache = {}  # Cache fetched content to avoid re-fetching
+
+    for turn in range(max_turns):
+        print(f"\nConversation turn {turn + 1}/{max_turns}")
+
+        # Print the current prompt being sent
+        print("\n=== PROMPT BEING SENT ===")
+        if messages:
+            # Print the last message (what we're sending now)
+            print(messages[-1]['content'])  
+            print("=== END PROMPT ===\n")
+
+        # Make API request
+        data = {
+            "model": "claude-opus-4-1-20250805-thinking",
+            "group": "claude",
+            "temperature": 0.1,
+            "messages": messages
+        }
+
+        try:
+            response = requests.post(url, headers=headers, json=data)
+            response.raise_for_status()
+
+            json_response = response.json()
+
+            # Extract response text
+            content = json_response.get("content", [])
+            text = None
+
+            for item in content:
+                if isinstance(item, dict) and item.get("type") == "text":
+                    text = item.get("text", "")
+                    break
+
+            if text is None and content and isinstance(content[0], dict):
+                text = content[0].get("text", "")
+
+            if not text:
+                raise KeyError("No text content found in response")
+
+            # Debug: Save raw response
+            if debug_mode:
+                with open(f"{debug_dir}/response_turn_{turn + 1}.txt", "w") as f:
+                    f.write(text)
+                print(f"[DEBUG] Saved response to {debug_dir}/response_turn_{turn + 1}.txt")
+
+                # Also save the full messages history
+                import json
+                with open(f"{debug_dir}/messages_turn_{turn + 1}.json", "w") as f:
+                    json.dump(messages, f, indent=2)
+
+            print(f"\nLLM Response:\n{text}...")
+
+            # Check if this is a final answer
+            if is_final_answer(text):
+                print("\nFinal answer received!")
+                print(text)
+                return parse_llm_output(text)
+
+            # Parse information requests
+            requested_numbers = parse_information_request(text)
+
+            if requested_numbers:
+                print(f"\nLLM requested information about: {requested_numbers}")
+
+                # Add assistant's message to conversation
+                messages.append({"role": "assistant", "content": text})
+
+                # Fetch requested information
+                fetched_info = "\n\n--- REQUESTED INFORMATION ---\n\n"
+
+                for number in requested_numbers:
+                    # Construct URL from number (assuming same repo as main issue)
+                    if base_repo_url:
+                        url_to_fetch = f"{base_repo_url}/issues/{number}"
+
+                        if url_to_fetch not in fetched_content_cache:
+                            print(f"Fetching: {url_to_fetch}")
+                            content = fetch_mentioned_issue_content(url_to_fetch, fetched_content_cache)
+                            if content:
+                                fetched_info += f"\n\n=== ISSUE/PR #{number} ===\n"
+                                fetched_info += content
+                            else:
+                                fetched_info += f"\n\n=== ISSUE/PR #{number} ===\n"
+                                fetched_info += "Failed to fetch this issue/PR\n"
+                        else:
+                            fetched_info += f"\n\n=== ISSUE/PR #{number} (from cache) ===\n"
+                            fetched_info += fetched_content_cache[url_to_fetch]
+
+                # Add fetched information as user message
+                messages.append({"role": "user", "content": fetched_info})
+            else:
+                # LLM didn't request information but also didn't provide final answer
+                print("\nNo information requested and no final answer. Adding prompt to continue...")
+                messages.append({"role": "assistant", "content": text})
+                messages.append({"role": "user", "content": "Please continue your analysis and provide the final categorization."})
+
+        except requests.exceptions.RequestException as e:
+            provider_name = "NekoAPI" if OPUS_API_PROVIDER == "neko" else "Anthropic API"
+            return Err(f"Network error calling {provider_name}: {e}")
+        except (IndexError, KeyError) as e:
+            provider_name = "NekoAPI" if OPUS_API_PROVIDER == "neko" else "Anthropic API"
+            return Err(f"Error parsing response from {provider_name}: {e}")
+        except ValueError as e:
+            provider_name = "NekoAPI" if OPUS_API_PROVIDER == "neko" else "Anthropic API"
+            return Err(f"Invalid JSON response from {provider_name}: {e}")
+        except Exception as e:
+            provider_name = "NekoAPI" if OPUS_API_PROVIDER == "neko" else "Anthropic API"
+            return Err(f"Unexpected error with {provider_name}: {e}")
+
+    return Err(f"Conversation exceeded maximum turns ({max_turns}) without reaching a final answer")
+
+
+def ask_opus_4(issue, debug_mode=False):
+    """Query Claude Opus using Anthropic API or compatible alternative.
+
+    Args:
+        issue: The issue to analyze
+        debug_mode: If True, saves detailed prompts and responses to files (conversation mode only)
+    """
+
+    if CONVERSATION_MODE:
+        return ask_opus_4_conversation(issue, debug_mode=debug_mode)
+
+    # Original one-shot mode
     # Prepare the full prompt with issue content
     full_prompt = prepare_full_prompt(issue)
     print()
@@ -1136,6 +1417,7 @@ def main():
         for item in categorization:
             print(" - " + item.value, file=sys.stderr)
         print()
+        exit(0)
         
     # Save categorized issues to a file
     if issues_categorized:
