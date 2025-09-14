@@ -19,7 +19,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 # CATEGORIZED_FILE_PATH = '/Users/bubblepipe/repo/gpu-bugs/selected_examples.json'
 # CATEGORIZED_FILE_PATH = '/Users/bubblepipe/repo/gpu-bugs/selected25.json'
 # CATEGORIZED_FILE_PATH = '/Users/bubblepipe/repo/gpu-bugs/selected50.json'
-CATEGORIZED_FILE_PATH = '/Users/bubblepipe/repo/gpu-bugs/selected50_head25.json'
+CATEGORIZED_FILE_PATH = '/Users/bubblepipe/repo/gpu-bugs/selected50_tail25.json'
 USE_CATEGORIZED_FILE = True # Set to False to select fresh issues
 # USE_CATEGORIZED_FILE = False  # Set to False to select fresh issues
 

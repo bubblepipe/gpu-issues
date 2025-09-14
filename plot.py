@@ -67,12 +67,12 @@ def plot_platform_distributions(categorized_issues, title="", ax=None):
     # Calculate max items based on all possible enum values to ensure consistent bar width
     # Use the maximum number of enum values across all categories
     max_possible_items = max(
-        len(list(IsReallyBug)),        # 5 items
-        len(list(UserPerspective)),     # 7 items
-        len(list(DeveloperPerspective)), # 6 items
-        len(list(AcceleratorSpecific)), # 4 items
-        len(list(UserExpertise))       # 4 items
-    )  # This will be 7 (UserPerspective has the most)
+        len(list(IsReallyBug)),        # 6 items
+        len(list(UserPerspective)),     # 9 items
+        len(list(DeveloperPerspective)), # 7 items
+        len(list(AcceleratorSpecific)), # 5 items
+        len(list(PlatformSpecificity))  # 4 items
+    )  # This will be 9 (UserPerspective has the most)
     bar_width = min(0.15, 0.8 / max_possible_items)  # Consistent bar width across all plots
     x_pos = np.arange(len(category_names))
     
@@ -179,8 +179,8 @@ def plot_all_platforms_distributions(categorized_issues, save_path="platform_dis
         framework = get_framework_from_url(url)
         platform_issues[framework].append(issue)
     
-    # Create figure with 2x3 subplots
-    fig, axes = plt.subplots(2, 3, figsize=(20, 12))
+    # Create figure with 2x3 subplots - more horizontal layout
+    fig, axes = plt.subplots(2, 3, figsize=(24, 10))
     fig.suptitle('Bug Categorization Distributions by Platform', fontsize=18, fontweight='bold', y=1.02)
     fig.patch.set_facecolor('#F8F9FA')
     
@@ -197,13 +197,13 @@ def plot_all_platforms_distributions(categorized_issues, save_path="platform_dis
         else:
             platform_data = platform_issues.get(platform, [])
             plot_platform_distributions(platform_data, title=platform, ax=ax)
-        
-    # Adjust layout
-    plt.tight_layout()
-    
+
+    # Adjust layout with manual spacing for horizontal layout
+    plt.subplots_adjust(left=0.04, right=0.96, top=0.92, bottom=0.08, hspace=0.35, wspace=0.15)
+
     # Save figure
     if save_path:
-        plt.savefig(save_path, dpi=150, bbox_inches='tight')
+        plt.savefig(save_path, dpi=150)
         print(f"Platform distributions saved to {save_path}")
     else:
         plt.show()
@@ -235,9 +235,9 @@ def plot_definitely_bugs_distributions(categorized_issues, save_path="definitely
         framework = get_framework_from_url(url)
         platform_issues[framework].append(issue)
     
-    # Create figure with 2x3 subplots
-    fig, axes = plt.subplots(2, 3, figsize=(20, 12))
-    fig.suptitle('Bug Categorization Distributions - Only Definitely Bugs (1.d)', fontsize=18, fontweight='bold', y=1.02)
+    # Create figure with 2x3 subplots - more horizontal layout
+    fig, axes = plt.subplots(2, 3, figsize=(24, 10))
+    fig.suptitle('Bug Categorization Distributions - Only Confirmed Bugs (1.d)', fontsize=18, fontweight='bold', y=1.02)
     fig.patch.set_facecolor('#F8F9FA')
     
     # Define platform order
@@ -249,17 +249,17 @@ def plot_definitely_bugs_distributions(categorized_issues, save_path="definitely
         col = idx % 3
         ax = axes[row, col]
         if platform == 'All':
-            plot_platform_distributions(definitely_bugs, title="All Platforms Combined (Definitely Bugs)", ax=ax)
+            plot_platform_distributions(definitely_bugs, title="All Platforms Combined (Confirmed Bugs)", ax=ax)
         else:
             platform_data = platform_issues.get(platform, [])
-            plot_platform_distributions(platform_data, title=f"{platform} (Definitely Bugs)", ax=ax)
-        
-    # Adjust layout
-    plt.tight_layout()
-    
+            plot_platform_distributions(platform_data, title=f"{platform} (Confirmed Bugs)", ax=ax)
+
+    # Adjust layout with manual spacing for horizontal layout
+    plt.subplots_adjust(left=0.04, right=0.96, top=0.92, bottom=0.08, hspace=0.35, wspace=0.15)
+
     # Save figure
     if save_path:
-        plt.savefig(save_path, dpi=150, bbox_inches='tight')
+        plt.savefig(save_path, dpi=150)
         print(f"Definitely bugs distributions saved to {save_path}")
     else:
         plt.show()
@@ -319,7 +319,7 @@ def plot_platform_filtered_distributions(categorized_issues, platform_level, sav
     
     # Save figure
     if save_path:
-        plt.savefig(save_path, dpi=150, bbox_inches='tight')
+        plt.savefig(save_path, dpi=150)
         print(f"{platform_level.name.title()} platform specificity distributions saved to {save_path}")
     else:
         plt.show()
@@ -616,22 +616,32 @@ def print_statistics(categorized_issues):
 
 if __name__ == "__main__":
     # Load categorized issues from JSON files
-    categorized_issues = load_categorized_results('/Users/bubblepipe/repo/gpu-bugs/categorized_issues_*.json')
-    
+    categorized_issues = load_categorized_results('/Users/bubblepipe/repo/gpu-bugs/64.json')
+
     if categorized_issues:
+        print(f'Loaded {len(categorized_issues)} issues from 64.json\n')
+
         # Print statistics
         print_statistics(categorized_issues)
-        
+
+        print('\nGenerating plots...')
+
         # Create platform-specific plots for all issues
-        plot_all_platforms_distributions(categorized_issues, save_path="platform_distributions.png")
-        
-        # Create platform-specific plots for only definitely bugs (1.d)
-        plot_definitely_bugs_distributions(categorized_issues, save_path="definitely_bugs_distributions.png")
-        
-        # Note: Platform filtering function renamed from expertise to platform specificity
-        
-        # Also create the original detailed plots if needed
-        # plot_bug_distributions(categorized_issues, save_path="bug_distributions.png")
-        # plot_combined_heatmap(categorized_issues, save_path="bug_heatmap.png")
+        plot_all_platforms_distributions(categorized_issues, save_path="64_platform_distributions.png")
+        print('  ✓ Platform distributions saved to 64_platform_distributions.png')
+
+        # Create platform-specific plots for only confirmed bugs (1.d)
+        plot_definitely_bugs_distributions(categorized_issues, save_path="64_confirmed_bugs_distributions.png")
+        print('  ✓ Confirmed bugs distributions saved to 64_confirmed_bugs_distributions.png')
+
+        # Create the detailed bug distribution plots
+        plot_bug_distributions(categorized_issues, save_path="64_bug_distributions.png")
+        print('  ✓ Bug distributions saved to 64_bug_distributions.png')
+
+        # Optionally create heatmap
+        # plot_combined_heatmap(categorized_issues, save_path="64_bug_heatmap.png")
+        # print('  ✓ Bug heatmap saved to 64_bug_heatmap.png')
+
+        print('\nAll plots generated successfully!')
     else:
         print("No categorized issues found.")
