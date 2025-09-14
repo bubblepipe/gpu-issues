@@ -138,18 +138,18 @@ def plot_platform_distributions(categorized_issues, title="", ax=None):
             if count > 0:
                 # Add full text label on top (vertical, black) with left anchor
                 ax.text(bar_position, count + 0.5, display_text,
-                       ha='left', va='bottom', fontsize=6, fontweight='semibold', 
+                       ha='left', va='bottom', fontsize=10, fontweight='semibold',
                        color='black', rotation=90)
                 # Add count value below the label
                 ax.text(bar_position, count + 0.2, str(count),
-                       ha='center', va='bottom', fontsize=6, color='black')
+                       ha='center', va='bottom', fontsize=10, color='black')
             else:
                 # For zero-count bars, show the text at the bottom with lighter color
                 ax.text(bar_position, 1.5, display_text,
-                       ha='left', va='bottom', fontsize=5, 
+                       ha='left', va='bottom', fontsize=10, 
                        color='gray', rotation=90)
                 ax.text(bar_position, 0.1, '0',
-                       ha='center', va='bottom', fontsize=5, color='gray')
+                       ha='center', va='bottom', fontsize=10, color='gray')
     
     ax.set_xlabel('Category', fontsize=11, fontweight='semibold')
     ax.set_ylabel('Count', fontsize=11, fontweight='semibold')
@@ -257,12 +257,12 @@ def plot_definitely_bugs_distributions(categorized_issues, save_path="definitely
     for i, (v, text) in enumerate(zip(user_values, user_texts)):
         if v > 0:
             ax1.text(i, v + 0.5, text, ha='left', va='bottom',
-                    fontsize=6, fontweight='semibold', color='black', rotation=90)
-            ax1.text(i, v + 0.1, str(v), ha='center', va='bottom', fontsize=6, color='black')
+                    fontsize=10, fontweight='semibold', color='black', rotation=90)
+            ax1.text(i, v + 0.1, str(v), ha='center', va='bottom', fontsize=7, color='black')
         else:
             ax1.text(i, 0.5, text, ha='left', va='bottom',
-                    fontsize=5, color='gray', rotation=90)
-            ax1.text(i, 0.05, '0', ha='center', va='bottom', fontsize=5, color='gray')
+                    fontsize=10, color='gray', rotation=90)
+            ax1.text(i, 0.05, '0', ha='center', va='bottom', fontsize=10, color='gray')
 
     # Plot Developer Perspective
     dev_counts = Counter(developer_perspective)
@@ -282,12 +282,12 @@ def plot_definitely_bugs_distributions(categorized_issues, save_path="definitely
     for i, (v, text) in enumerate(zip(dev_values, dev_texts)):
         if v > 0:
             ax2.text(i, v + 0.5, text, ha='left', va='bottom',
-                    fontsize=6, fontweight='semibold', color='black', rotation=90)
-            ax2.text(i, v + 0.1, str(v), ha='center', va='bottom', fontsize=6, color='black')
+                    fontsize=10, fontweight='semibold', color='black', rotation=90)
+            ax2.text(i, v + 0.1, str(v), ha='center', va='bottom', fontsize=7, color='black')
         else:
             ax2.text(i, 0.5, text, ha='left', va='bottom',
-                    fontsize=5, color='gray', rotation=90)
-            ax2.text(i, 0.05, '0', ha='center', va='bottom', fontsize=5, color='gray')
+                    fontsize=10, color='gray', rotation=90)
+            ax2.text(i, 0.05, '0', ha='center', va='bottom', fontsize=10, color='gray')
 
     # Plot Resolution Status
     accel_counts = Counter(accelerator_specific)
@@ -307,12 +307,12 @@ def plot_definitely_bugs_distributions(categorized_issues, save_path="definitely
     for i, (v, text) in enumerate(zip(accel_values, accel_texts)):
         if v > 0:
             ax3.text(i, v + 0.5, text, ha='left', va='bottom',
-                    fontsize=6, fontweight='semibold', color='black', rotation=90)
-            ax3.text(i, v + 0.1, str(v), ha='center', va='bottom', fontsize=6, color='black')
+                    fontsize=10, fontweight='semibold', color='black', rotation=90)
+            ax3.text(i, v + 0.1, str(v), ha='center', va='bottom', fontsize=7, color='black')
         else:
             ax3.text(i, 0.5, text, ha='left', va='bottom',
-                    fontsize=5, color='gray', rotation=90)
-            ax3.text(i, 0.05, '0', ha='center', va='bottom', fontsize=5, color='gray')
+                    fontsize=10, color='gray', rotation=90)
+            ax3.text(i, 0.05, '0', ha='center', va='bottom', fontsize=10, color='gray')
 
     # Plot Platform Specificity
     platform_counts = Counter(platform_specificity)
@@ -332,12 +332,12 @@ def plot_definitely_bugs_distributions(categorized_issues, save_path="definitely
     for i, (v, text) in enumerate(zip(platform_values, platform_texts)):
         if v > 0:
             ax4.text(i, v + 0.5, text, ha='left', va='bottom',
-                    fontsize=6, fontweight='semibold', color='black', rotation=90)
-            ax4.text(i, v + 0.1, str(v), ha='center', va='bottom', fontsize=6, color='black')
+                    fontsize=10, fontweight='semibold', color='black', rotation=90)
+            ax4.text(i, v + 0.1, str(v), ha='center', va='bottom', fontsize=7, color='black')
         else:
             ax4.text(i, 0.5, text, ha='left', va='bottom',
-                    fontsize=5, color='gray', rotation=90)
-            ax4.text(i, 0.05, '0', ha='center', va='bottom', fontsize=5, color='gray')
+                    fontsize=10, color='gray', rotation=90)
+            ax4.text(i, 0.05, '0', ha='center', va='bottom', fontsize=10, color='gray')
 
     # Adjust layout
     plt.tight_layout()
@@ -452,14 +452,14 @@ def plot_bug_distributions(categorized_issues, save_path=None):
         if v > 0:
             # Add full text label on top (vertical, black) with left anchor
             ax1.text(i, v + 1.5, text, ha='left', va='bottom', 
-                    fontsize=6, fontweight='semibold', color='black', rotation=90)
+                    fontsize=10, fontweight='semibold', color='black', rotation=90)
             # Add count value below the label
-            ax1.text(i, v + 0.2, str(v), ha='center', va='bottom', fontsize=6, color='black')
+            ax1.text(i, v + 0.2, str(v), ha='center', va='bottom', fontsize=10, color='black')
         else:
             # For zero-count bars, show the text at the bottom with lighter color
             ax1.text(i, 1.5, text, ha='left', va='bottom', 
-                    fontsize=5, color='gray', rotation=90)
-            ax1.text(i, 0.1, '0', ha='center', va='bottom', fontsize=5, color='gray')
+                    fontsize=10, color='gray', rotation=90)
+            ax1.text(i, 0.1, '0', ha='center', va='bottom', fontsize=10, color='gray')
     
     # Plot User Perspective
     user_counts = Counter(user_perspective)
@@ -481,14 +481,14 @@ def plot_bug_distributions(categorized_issues, save_path=None):
         if v > 0:
             # Add full text label on top (vertical, black) with left anchor
             ax2.text(i, v + 1.5, text, ha='left', va='bottom', 
-                    fontsize=6, fontweight='semibold', color='black', rotation=90)
+                    fontsize=10, fontweight='semibold', color='black', rotation=90)
             # Add count value below the label
-            ax2.text(i, v + 0.2, str(v), ha='center', va='bottom', fontsize=6, color='black')
+            ax2.text(i, v + 0.2, str(v), ha='center', va='bottom', fontsize=10, color='black')
         else:
             # For zero-count bars, show the text at the bottom with lighter color
             ax2.text(i, 1.5, text, ha='left', va='bottom', 
-                    fontsize=5, color='gray', rotation=90)
-            ax2.text(i, 0.1, '0', ha='center', va='bottom', fontsize=5, color='gray')
+                    fontsize=10, color='gray', rotation=90)
+            ax2.text(i, 0.1, '0', ha='center', va='bottom', fontsize=10, color='gray')
     
     # Plot Developer Perspective  
     dev_counts = Counter(developer_perspective)
@@ -510,14 +510,14 @@ def plot_bug_distributions(categorized_issues, save_path=None):
         if v > 0:
             # Add full text label on top (vertical, black) with left anchor
             ax3.text(i, v + 1.5, text, ha='left', va='bottom', 
-                    fontsize=6, fontweight='semibold', color='black', rotation=90)
+                    fontsize=10, fontweight='semibold', color='black', rotation=90)
             # Add count value below the label
-            ax3.text(i, v + 0.2, str(v), ha='center', va='bottom', fontsize=6, color='black')
+            ax3.text(i, v + 0.2, str(v), ha='center', va='bottom', fontsize=10, color='black')
         else:
             # For zero-count bars, show the text at the bottom with lighter color
             ax3.text(i, 1.5, text, ha='left', va='bottom', 
-                    fontsize=5, color='gray', rotation=90)
-            ax3.text(i, 0.1, '0', ha='center', va='bottom', fontsize=5, color='gray')
+                    fontsize=10, color='gray', rotation=90)
+            ax3.text(i, 0.1, '0', ha='center', va='bottom', fontsize=10, color='gray')
     
     # Plot Accelerator Specific
     accel_counts = Counter(accelerator_specific)
@@ -539,14 +539,14 @@ def plot_bug_distributions(categorized_issues, save_path=None):
         if v > 0:
             # Add full text label on top (vertical, black) with left anchor
             ax4.text(i, v + 1.5, text, ha='left', va='bottom', 
-                    fontsize=6, fontweight='semibold', color='black', rotation=90)
+                    fontsize=10, fontweight='semibold', color='black', rotation=90)
             # Add count value below the label
-            ax4.text(i, v + 0.2, str(v), ha='center', va='bottom', fontsize=6, color='black')
+            ax4.text(i, v + 0.2, str(v), ha='center', va='bottom', fontsize=10, color='black')
         else:
             # For zero-count bars, show the text at the bottom with lighter color
             ax4.text(i, 1.5, text, ha='left', va='bottom', 
-                    fontsize=5, color='gray', rotation=90)
-            ax4.text(i, 0.1, '0', ha='center', va='bottom', fontsize=5, color='gray')
+                    fontsize=10, color='gray', rotation=90)
+            ax4.text(i, 0.1, '0', ha='center', va='bottom', fontsize=10, color='gray')
     
     # Plot Platform Specificity
     platform_counts = Counter(platform_specificity)
@@ -568,14 +568,14 @@ def plot_bug_distributions(categorized_issues, save_path=None):
         if v > 0:
             # Add full text label on top (vertical, black) with left anchor
             ax5.text(i, v + 1.5, text, ha='left', va='bottom', 
-                    fontsize=6, fontweight='semibold', color='black', rotation=90)
+                    fontsize=10, fontweight='semibold', color='black', rotation=90)
             # Add count value below the label
-            ax5.text(i, v + 0.2, str(v), ha='center', va='bottom', fontsize=6, color='black')
+            ax5.text(i, v + 0.2, str(v), ha='center', va='bottom', fontsize=10, color='black')
         else:
             # For zero-count bars, show the text at the bottom with lighter color
             ax5.text(i, 1.5, text, ha='left', va='bottom', 
-                    fontsize=5, color='gray', rotation=90)
-            ax5.text(i, 0.1, '0', ha='center', va='bottom', fontsize=5, color='gray')
+                    fontsize=10, color='gray', rotation=90)
+            ax5.text(i, 0.1, '0', ha='center', va='bottom', fontsize=10, color='gray')
     
     # Hide the 6th subplot (we only have 5 categories now)
     ax6.axis('off')
