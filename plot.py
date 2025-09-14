@@ -213,57 +213,142 @@ def plot_all_platforms_distributions(categorized_issues, save_path="platform_dis
 
 def plot_definitely_bugs_distributions(categorized_issues, save_path="definitely_bugs_distributions.png"):
     """
-    Create a single figure with 6 subplots showing only issues categorized as "1.d really yes, definitely a bug".
-    
+    Create bar plots showing the distribution of categorization dimensions for only confirmed bugs (1.d).
+    Similar to plot_bug_distributions but filtered to only confirmed bugs.
+
     Args:
         categorized_issues: List of all categorized issue tuples
         save_path: Path to save the combined figure
     """
     # Filter for only definitely bugs (1.d)
-    definitely_bugs = [issue for issue in categorized_issues 
+    definitely_bugs = [issue for issue in categorized_issues
                       if issue[2] is not None and issue[2] == IsReallyBug.CONFIRMED_BUG]
-    
-    if not definitely_bugs:
-        print("No issues categorized as 'definitely a bug' (1.d) found.")
-        return None
-    
-    # Separate filtered issues by platform
-    platform_issues = defaultdict(list)
-    
-    for issue in definitely_bugs:
-        url = issue[1]  # URL is at index 1
-        framework = get_framework_from_url(url)
-        platform_issues[framework].append(issue)
-    
-    # Create figure with 2x3 subplots - more horizontal layout
-    fig, axes = plt.subplots(2, 3, figsize=(24, 10))
-    fig.suptitle('Bug Categorization Distributions - Only Confirmed Bugs (1.d)', fontsize=18, fontweight='bold', y=1.02)
-    fig.patch.set_facecolor('#F8F9FA')
-    
-    # Define platform order
-    platforms = ['PyTorch', 'TensorFlow', 'JAX', 'TensorRT', 'Triton', 'All']
-    
-    # Plot individual platforms
-    for idx, platform in enumerate(platforms):
-        row = idx // 3
-        col = idx % 3
-        ax = axes[row, col]
-        if platform == 'All':
-            plot_platform_distributions(definitely_bugs, title="All Platforms Combined (Confirmed Bugs)", ax=ax)
-        else:
-            platform_data = platform_issues.get(platform, [])
-            plot_platform_distributions(platform_data, title=f"{platform} (Confirmed Bugs)", ax=ax)
 
-    # Adjust layout with manual spacing for horizontal layout
-    plt.subplots_adjust(left=0.04, right=0.96, top=0.92, bottom=0.08, hspace=0.35, wspace=0.15)
+    if not definitely_bugs:
+        print("No issues categorized as 'confirmed bug' (1.d) found.")
+        return None
+
+    # Extract the categorizations for confirmed bugs only
+    user_perspective = [issue[3] for issue in definitely_bugs if issue[3] is not None]
+    developer_perspective = [issue[4] for issue in definitely_bugs if issue[4] is not None]
+    accelerator_specific = [issue[5] for issue in definitely_bugs if issue[5] is not None]
+    platform_specificity = [issue[6] for issue in definitely_bugs if issue[6] is not None]
+
+    # Create subplots - 2x2 grid for the 4 remaining dimensions
+    fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(20, 12))
+    fig.suptitle(f'Distribution of Confirmed Bugs Only (n={len(definitely_bugs)})', fontsize=18, fontweight='bold')
+    fig.patch.set_facecolor('#F8F9FA')
+
+    # Plot User Perspective
+    user_counts = Counter(user_perspective)
+    user_items = list(UserPerspective)
+    user_labels = [up.name.replace('_', ' ').title() for up in user_items]
+    user_texts = [up.value[:25] + "..." if len(up.value) > 25 else up.value for up in user_items]
+    user_values = [user_counts.get(up, 0) for up in user_items]
+
+    ax1.bar(user_labels, user_values, color='#74C69D', edgecolor='#2D3436', linewidth=0.8, alpha=0.85)
+    ax1.set_title('User-Visible Symptoms (Confirmed Bugs)', fontweight='bold', fontsize=12)
+    ax1.set_ylabel('Count')
+    ax1.tick_params(axis='x', rotation=45)
+    ax1.set_facecolor('#FAFBFC')
+    ax1.grid(axis='y', alpha=0.3, linestyle='--', linewidth=0.5)
+
+    # Add value and text labels on bars
+    for i, (v, text) in enumerate(zip(user_values, user_texts)):
+        if v > 0:
+            ax1.text(i, v + 0.5, text, ha='left', va='bottom',
+                    fontsize=6, fontweight='semibold', color='black', rotation=90)
+            ax1.text(i, v + 0.1, str(v), ha='center', va='bottom', fontsize=6, color='black')
+        else:
+            ax1.text(i, 0.5, text, ha='left', va='bottom',
+                    fontsize=5, color='gray', rotation=90)
+            ax1.text(i, 0.05, '0', ha='center', va='bottom', fontsize=5, color='gray')
+
+    # Plot Developer Perspective
+    dev_counts = Counter(developer_perspective)
+    dev_items = list(DeveloperPerspective)
+    dev_labels = [dp.name.replace('_', ' ').title() for dp in dev_items]
+    dev_texts = [dp.value[:25] + "..." if len(dp.value) > 25 else dp.value for dp in dev_items]
+    dev_values = [dev_counts.get(dp, 0) for dp in dev_items]
+
+    ax2.bar(dev_labels, dev_values, color='#F9A03F', edgecolor='#2D3436', linewidth=0.8, alpha=0.85)
+    ax2.set_title('Root Cause Analysis (Confirmed Bugs)', fontweight='bold', fontsize=12)
+    ax2.set_ylabel('Count')
+    ax2.tick_params(axis='x', rotation=45)
+    ax2.set_facecolor('#FAFBFC')
+    ax2.grid(axis='y', alpha=0.3, linestyle='--', linewidth=0.5)
+
+    # Add value and text labels on bars
+    for i, (v, text) in enumerate(zip(dev_values, dev_texts)):
+        if v > 0:
+            ax2.text(i, v + 0.5, text, ha='left', va='bottom',
+                    fontsize=6, fontweight='semibold', color='black', rotation=90)
+            ax2.text(i, v + 0.1, str(v), ha='center', va='bottom', fontsize=6, color='black')
+        else:
+            ax2.text(i, 0.5, text, ha='left', va='bottom',
+                    fontsize=5, color='gray', rotation=90)
+            ax2.text(i, 0.05, '0', ha='center', va='bottom', fontsize=5, color='gray')
+
+    # Plot Resolution Status
+    accel_counts = Counter(accelerator_specific)
+    accel_items = list(AcceleratorSpecific)
+    accel_labels = [ac.name.replace('_', ' ').title() for ac in accel_items]
+    accel_texts = [ac.value[:25] + "..." if len(ac.value) > 25 else ac.value for ac in accel_items]
+    accel_values = [accel_counts.get(ac, 0) for ac in accel_items]
+
+    ax3.bar(accel_labels, accel_values, color='#F94144', edgecolor='#2D3436', linewidth=0.8, alpha=0.85)
+    ax3.set_title('Resolution Status (Confirmed Bugs)', fontweight='bold', fontsize=12)
+    ax3.set_ylabel('Count')
+    ax3.tick_params(axis='x', rotation=45)
+    ax3.set_facecolor('#FAFBFC')
+    ax3.grid(axis='y', alpha=0.3, linestyle='--', linewidth=0.5)
+
+    # Add value and text labels on bars
+    for i, (v, text) in enumerate(zip(accel_values, accel_texts)):
+        if v > 0:
+            ax3.text(i, v + 0.5, text, ha='left', va='bottom',
+                    fontsize=6, fontweight='semibold', color='black', rotation=90)
+            ax3.text(i, v + 0.1, str(v), ha='center', va='bottom', fontsize=6, color='black')
+        else:
+            ax3.text(i, 0.5, text, ha='left', va='bottom',
+                    fontsize=5, color='gray', rotation=90)
+            ax3.text(i, 0.05, '0', ha='center', va='bottom', fontsize=5, color='gray')
+
+    # Plot Platform Specificity
+    platform_counts = Counter(platform_specificity)
+    platform_items = list(PlatformSpecificity)
+    platform_labels = [ps.name.replace('_', ' ').title() for ps in platform_items]
+    platform_texts = [ps.value[:25] + "..." if len(ps.value) > 25 else ps.value for ps in platform_items]
+    platform_values = [platform_counts.get(ps, 0) for ps in platform_items]
+
+    ax4.bar(platform_labels, platform_values, color='#9D4EDD', edgecolor='#2D3436', linewidth=0.8, alpha=0.85)
+    ax4.set_title('Platform Specificity (Confirmed Bugs)', fontweight='bold', fontsize=12)
+    ax4.set_ylabel('Count')
+    ax4.tick_params(axis='x', rotation=45)
+    ax4.set_facecolor('#FAFBFC')
+    ax4.grid(axis='y', alpha=0.3, linestyle='--', linewidth=0.5)
+
+    # Add value and text labels on bars
+    for i, (v, text) in enumerate(zip(platform_values, platform_texts)):
+        if v > 0:
+            ax4.text(i, v + 0.5, text, ha='left', va='bottom',
+                    fontsize=6, fontweight='semibold', color='black', rotation=90)
+            ax4.text(i, v + 0.1, str(v), ha='center', va='bottom', fontsize=6, color='black')
+        else:
+            ax4.text(i, 0.5, text, ha='left', va='bottom',
+                    fontsize=5, color='gray', rotation=90)
+            ax4.text(i, 0.05, '0', ha='center', va='bottom', fontsize=5, color='gray')
+
+    # Adjust layout
+    plt.tight_layout()
 
     # Save figure
     if save_path:
-        plt.savefig(save_path, dpi=150)
-        print(f"Definitely bugs distributions saved to {save_path}")
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        print(f"Confirmed bugs distributions saved to {save_path}")
     else:
         plt.show()
-    
+
     return fig
 
 
@@ -626,17 +711,17 @@ if __name__ == "__main__":
 
         print('\nGenerating plots...')
 
-        # Create platform-specific plots for all issues
-        plot_all_platforms_distributions(categorized_issues, save_path="64_platform_distributions.png")
-        print('  ✓ Platform distributions saved to 64_platform_distributions.png')
+        # # Create platform-specific plots for all issues
+        # plot_all_platforms_distributions(categorized_issues, save_path="platform_distributions.png")
+        # print('  ✓ Platform distributions saved to platform_distributions.png')
 
         # Create platform-specific plots for only confirmed bugs (1.d)
-        plot_definitely_bugs_distributions(categorized_issues, save_path="64_confirmed_bugs_distributions.png")
-        print('  ✓ Confirmed bugs distributions saved to 64_confirmed_bugs_distributions.png')
+        plot_definitely_bugs_distributions(categorized_issues, save_path="confirmed_bugs_distributions.png")
+        print('  ✓ Confirmed bugs distributions saved to confirmed_bugs_distributions.png')
 
         # Create the detailed bug distribution plots
-        plot_bug_distributions(categorized_issues, save_path="64_bug_distributions.png")
-        print('  ✓ Bug distributions saved to 64_bug_distributions.png')
+        plot_bug_distributions(categorized_issues, save_path="bug_distributions.png")
+        print('  ✓ Bug distributions saved to bug_distributions.png')
 
         # Optionally create heatmap
         # plot_combined_heatmap(categorized_issues, save_path="64_bug_heatmap.png")
