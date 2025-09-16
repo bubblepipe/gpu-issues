@@ -19,8 +19,12 @@
           matplotlib
           numpy
           openai
+          pandas
           requests
           result
+          scipy
+          seaborn
+          scikit-learn
         ]);
       in
       {
@@ -30,13 +34,7 @@
           ];
 
           shellHook = ''
-            echo "Python version: $(python --version)"
-            python -c "import json5; print(f'  - json5 {json5.__version__}')"
-            python -c "import matplotlib; print(f'  - matplotlib {matplotlib.__version__}')"
-            python -c "import numpy; print(f'  - numpy {numpy.__version__}')"
-            python -c "import openai; print(f'  - openai {openai.__version__}')"
-            python -c "import requests; print(f'  - requests {requests.__version__}')"
-            python -c "import result; print(f'  - result {result.__version__}')"
+            echo "Python environment ready with analysis packages"
           '';
         };
       });

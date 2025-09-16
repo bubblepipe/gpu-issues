@@ -441,7 +441,7 @@ def plot_bug_distributions(categorized_issues, save_path=None):
     bug_values = [bug_counts.get(bt, 0) for bt in bug_items]  # Use 0 for missing values
     
     ax1.bar(bug_labels, bug_values, color='#5EB1BF', edgecolor='#2D3436', linewidth=0.8, alpha=0.85)
-    ax1.set_title('Is Really Bug Distribution', fontweight='bold', fontsize=12)
+    ax1.set_title(f'Is Really Bug Distribution (n={len(is_really_bug)})', fontweight='bold', fontsize=12)
     ax1.set_ylabel('Count')
     ax1.tick_params(axis='x', rotation=45)
     ax1.set_facecolor('#FAFBFC')
@@ -470,7 +470,7 @@ def plot_bug_distributions(categorized_issues, save_path=None):
     user_values = [user_counts.get(up, 0) for up in user_items]  # Use 0 for missing values
     
     ax2.bar(user_labels, user_values, color='#74C69D', edgecolor='#2D3436', linewidth=0.8, alpha=0.85)
-    ax2.set_title('User Perspective Distribution', fontweight='bold', fontsize=12)
+    ax2.set_title(f'User Perspective Distribution (n={len(user_perspective)})', fontweight='bold', fontsize=12)
     ax2.set_ylabel('Count')
     ax2.tick_params(axis='x', rotation=45)
     ax2.set_facecolor('#FAFBFC')
@@ -499,7 +499,7 @@ def plot_bug_distributions(categorized_issues, save_path=None):
     dev_values = [dev_counts.get(dp, 0) for dp in dev_items]  # Use 0 for missing values
     
     ax3.bar(dev_labels, dev_values, color='#F9A03F', edgecolor='#2D3436', linewidth=0.8, alpha=0.85)
-    ax3.set_title('Developer Perspective Distribution', fontweight='bold', fontsize=12)
+    ax3.set_title(f'Developer Perspective Distribution (n={len(developer_perspective)})', fontweight='bold', fontsize=12)
     ax3.set_ylabel('Count')
     ax3.tick_params(axis='x', rotation=45)
     ax3.set_facecolor('#FAFBFC')
@@ -528,7 +528,7 @@ def plot_bug_distributions(categorized_issues, save_path=None):
     accel_values = [accel_counts.get(ac, 0) for ac in accel_items]  # Use 0 for missing values
     
     ax4.bar(accel_labels, accel_values, color='#F94144', edgecolor='#2D3436', linewidth=0.8, alpha=0.85)
-    ax4.set_title('Accelerator Specific Distribution', fontweight='bold', fontsize=12)
+    ax4.set_title(f'Accelerator Specific Distribution (n={len(accelerator_specific)})', fontweight='bold', fontsize=12)
     ax4.set_ylabel('Count')
     ax4.tick_params(axis='x', rotation=45)
     ax4.set_facecolor('#FAFBFC')
@@ -557,7 +557,7 @@ def plot_bug_distributions(categorized_issues, save_path=None):
     platform_values = [platform_counts.get(ps, 0) for ps in platform_items]  # Use 0 for missing values
     
     ax5.bar(platform_labels, platform_values, color='#9D4EDD', edgecolor='#2D3436', linewidth=0.8, alpha=0.85)
-    ax5.set_title('Platform Specificity Distribution', fontweight='bold', fontsize=12)
+    ax5.set_title(f'Platform Specificity Distribution (n={len(platform_specificity)})', fontweight='bold', fontsize=12)
     ax5.set_ylabel('Count')
     ax5.tick_params(axis='x', rotation=45)
     ax5.set_facecolor('#FAFBFC')
