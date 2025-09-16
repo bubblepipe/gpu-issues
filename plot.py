@@ -211,8 +211,179 @@ def plot_all_platforms_distributions(categorized_issues, save_path="platform_dis
     return fig
 
 
+def plot_filtered_distributions(categorized_issues, filter_question=None, filter_answer=None,
+                                exclude_questions=None, save_path=None, title_suffix=""):
+    """
+    Create bar plots showing the distribution of categorization dimensions filtered by a specific question/answer.
+
+    Args:
+        categorized_issues: List of all categorized issue tuples
+        filter_question: Question number (0-4) or field name to filter by
+                        0 = Q1 (Bug Classification)
+                        1 = Q2 (User-Visible Symptoms)
+                        2 = Q3 (Root Cause Analysis)
+                        3 = Q4 (Resolution Status)
+                        4 = Q5 (Platform Specificity)
+        filter_answer: Enum value to filter for (e.g., IsReallyBug.CONFIRMED_BUG)
+        exclude_questions: List of question numbers (0-4) to exclude from plotting (default: the filtered question)
+        save_path: Path to save the figure
+        title_suffix: Additional text to add to the title
+
+    Returns:
+        matplotlib figure or None if no matching issues
+    """
+    # Map question numbers (0-based) to enum classes and display names
+    # Note: We add 2 to the question number to get the tuple index
+    question_mapping = {
+        # Question number: (field_name, enum_class, display_name, tuple_index)
+        0: ('is_really_bug', IsReallyBug, 'Bug Classification', 2),
+        1: ('user_perspective', UserPerspective, 'User-Visible Symptoms', 3),
+        2: ('developer_perspective', DeveloperPerspective, 'Root Cause Analysis', 4),
+        3: ('accelerator_specific', AcceleratorSpecific, 'Resolution Status', 5),
+        4: ('platform_specificity', PlatformSpecificity, 'Platform Specificity', 6)
+    }
+
+    # Also support field names as filter_question
+    field_to_question = {v[0]: k for k, v in question_mapping.items()}
+
+    # Convert field name to question number if needed
+    if isinstance(filter_question, str):
+        filter_question = field_to_question.get(filter_question)
+
+    # Filter issues if criteria provided
+    if filter_question is not None and filter_answer is not None:
+        tuple_idx = question_mapping[filter_question][3]  # Get tuple index
+        filtered_issues = [issue for issue in categorized_issues
+                          if issue[tuple_idx] is not None and issue[tuple_idx] == filter_answer]
+
+        if not filtered_issues:
+            print(f"No issues found with filter: Q{filter_question+1} = {filter_answer.name if hasattr(filter_answer, 'name') else filter_answer}")
+            return None
+    else:
+        filtered_issues = categorized_issues
+
+    # Determine which questions to plot
+    if exclude_questions is None and filter_question is not None:
+        exclude_questions = [filter_question]
+    elif exclude_questions is None:
+        exclude_questions = []
+
+    questions_to_plot = [q for q in question_mapping.keys() if q not in exclude_questions]
+
+    # Determine subplot layout based on number of questions
+    n_plots = len(questions_to_plot)
+    if n_plots <= 2:
+        fig, axes = plt.subplots(1, n_plots, figsize=(10 * n_plots, 6))
+        if n_plots == 1:
+            axes = [axes]
+    elif n_plots <= 4:
+        fig, axes = plt.subplots(2, 2, figsize=(20, 12))
+        axes = axes.flatten()[:n_plots]
+    elif n_plots == 5:
+        fig, axes = plt.subplots(2, 3, figsize=(20, 12))
+        axes = axes.flatten()[:n_plots]
+    else:
+        fig, axes = plt.subplots(3, 2, figsize=(20, 18))
+        axes = axes.flatten()[:n_plots]
+
+    # Create title
+    if filter_question is not None and filter_answer is not None:
+        filter_name = filter_answer.name.replace('_', ' ').title() if hasattr(filter_answer, 'name') else str(filter_answer)
+        base_title = f'Distribution for {filter_name} (n={len(filtered_issues)})'
+    else:
+        base_title = f'Distribution of All Issues (n={len(filtered_issues)})'
+
+    if title_suffix:
+        base_title = f"{base_title} - {title_suffix}"
+
+    fig.suptitle(base_title, fontsize=18, fontweight='bold')
+    fig.patch.set_facecolor('#F8F9FA')
+
+    # Color mapping for each question type
+    color_map = {
+        0: '#5EB1BF',  # Q1: Bug Classification - Blue
+        1: '#74C69D',  # Q2: User Perspective - Green
+        2: '#F9A03F',  # Q3: Developer Perspective - Orange
+        3: '#F94144',  # Q4: Resolution Status - Red
+        4: '#9D4EDD'   # Q5: Platform Specificity - Purple
+    }
+
+    # Plot each question
+    for ax_idx, q_num in enumerate(questions_to_plot):
+        ax = axes[ax_idx] if n_plots > 1 else axes[0]
+        _, enum_class, display_name, tuple_idx = question_mapping[q_num]
+
+        # Extract data for this question using the tuple index
+        data = [issue[tuple_idx] for issue in filtered_issues if issue[tuple_idx] is not None]
+
+        # Count occurrences
+        counts = Counter(data)
+
+        # Get all enum values for consistent ordering
+        all_items = list(enum_class)
+        labels = [item.name.replace('_', ' ').title() for item in all_items]
+        texts = [item.value[:25] + "..." if len(item.value) > 25 else item.value for item in all_items]
+        values = [counts.get(item, 0) for item in all_items]
+
+        # Plot bars
+        ax.bar(labels, values, color=color_map[q_num], edgecolor='#2D3436', linewidth=0.8, alpha=0.85)
+        ax.set_title(f'{display_name} (n={len(data)})', fontweight='bold', fontsize=12)
+        ax.set_ylabel('Count')
+        ax.tick_params(axis='x', rotation=45)
+        ax.set_facecolor('#FAFBFC')
+        ax.grid(axis='y', alpha=0.3, linestyle='--', linewidth=0.5)
+
+        # Add value and text labels on bars
+        for i, (v, text) in enumerate(zip(values, texts)):
+            if v > 0:
+                ax.text(i, v + 0.5, text, ha='left', va='bottom',
+                       fontsize=10, fontweight='semibold', color='black', rotation=90)
+                ax.text(i, v + 0.1, str(v), ha='center', va='bottom', fontsize=10, color='black')
+            else:
+                ax.text(i, 0.5, text, ha='left', va='bottom',
+                       fontsize=10, color='gray', rotation=90)
+                ax.text(i, 0.05, '0', ha='center', va='bottom', fontsize=10, color='gray')
+
+    # Hide unused subplots if any
+    if n_plots < len(axes):
+        for idx in range(n_plots, len(axes)):
+            axes[idx].axis('off')
+
+    # Adjust layout
+    plt.tight_layout()
+
+    # Save figure
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        print(f"Filtered distributions saved to {save_path}")
+    else:
+        plt.show()
+
+    return fig
+
+
 def plot_definitely_bugs_distributions(categorized_issues, save_path="definitely_bugs_distributions.png"):
     """
+    Create bar plots showing the distribution of categorization dimensions for only confirmed bugs (1.d).
+    Similar to plot_bug_distributions but filtered to only confirmed bugs.
+
+    Args:
+        categorized_issues: List of all categorized issue tuples
+        save_path: Path to save the combined figure
+    """
+    # Use the new filtered function with confirmed bugs filter
+    return plot_filtered_distributions(
+        categorized_issues,
+        filter_question=0,  # Q1: Bug Classification
+        filter_answer=IsReallyBug.CONFIRMED_BUG,
+        save_path=save_path,
+        title_suffix="Confirmed Bugs Only"
+    )
+
+
+def plot_definitely_bugs_distributions_old(categorized_issues, save_path="definitely_bugs_distributions.png"):
+    """
+    [OLD VERSION - KEPT FOR REFERENCE]
     Create bar plots showing the distribution of categorization dimensions for only confirmed bugs (1.d).
     Similar to plot_bug_distributions but filtered to only confirmed bugs.
 
@@ -701,7 +872,7 @@ def print_statistics(categorized_issues):
 
 if __name__ == "__main__":
     # Load categorized issues from JSON files
-    categorized_issues = load_categorized_results('/Users/bubblepipe/repo/gpu-bugs/64.json')
+    categorized_issues = load_categorized_results('/Users/bubblepipe/repo/gpu-bugs/reference65.json')
 
     if categorized_issues:
         print(f'Loaded {len(categorized_issues)} issues from 64.json\n')
@@ -716,8 +887,62 @@ if __name__ == "__main__":
         # print('  ✓ Platform distributions saved to platform_distributions.png')
 
         # Create platform-specific plots for only confirmed bugs (1.d)
-        plot_definitely_bugs_distributions(categorized_issues, save_path="confirmed_bugs_distributions.png")
-        print('  ✓ Confirmed bugs distributions saved to confirmed_bugs_distributions.png')
+
+        plot_filtered_distributions(
+            categorized_issues,
+            filter_question=0,  # Q1: Bug Classification
+            filter_answer=IsReallyBug.NOT_A_BUG,
+            save_path="q1-a.png",
+            title_suffix="Q1 - Not a bug "
+        )
+
+        plot_filtered_distributions(
+            categorized_issues,
+            filter_question=0,  # Q1: Bug Classification
+            filter_answer=IsReallyBug.DESIGN_ISSUE,
+            save_path="q1-b.png",
+            title_suffix="Q1 - Design issue"
+        )
+
+        plot_filtered_distributions(
+            categorized_issues,
+            filter_question=0,  # Q1: Bug Classification
+            filter_answer=IsReallyBug.USER_ERROR,
+            save_path="q1-c.png",
+            title_suffix="Q1 - User error"
+        )
+
+        plot_filtered_distributions(
+            categorized_issues,
+            filter_question=0,  # Q1: Bug Classification
+            filter_answer=IsReallyBug.CONFIRMED_BUG,
+            save_path="q1-d.png",
+            title_suffix="Q1 - Confirmed bug"
+        )
+
+        plot_filtered_distributions(
+            categorized_issues,
+            filter_question=0,  # Q1: Bug Classification
+            filter_answer=IsReallyBug.DOCUMENTATION_BUG,
+            save_path="q1-e.png",
+            title_suffix="Q1 - Doc bug"
+        )
+
+        plot_filtered_distributions(
+            categorized_issues,
+            filter_question=0,  # Q1: Bug Classification
+            filter_answer=IsReallyBug.DONT_KNOW,
+            save_path="q1-f.png",
+            title_suffix="Q1 - Dont know"
+        )
+
+        #     plot_filtered_distributions(
+        #     categorized_issues,
+        #     filter_question=2,  # IsReallyBug is at index 2
+        #     filter_answer=IsReallyBug.CONFIRMED_BUG,
+        #     save_path="confirmed_bugs_distributions.png",
+        #     title_suffix="Confirmed Bugs Only"
+        # )
 
         # Create the detailed bug distribution plots
         plot_bug_distributions(categorized_issues, save_path="bug_distributions.png")
