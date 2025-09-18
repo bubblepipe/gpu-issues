@@ -134,6 +134,11 @@ Reasoning: The code works as designed but the design is unconventional and surpr
 Correct Answer: 1.b, 2.g, 3.f, 4.d, 5.d
 
 ## Your Task
-The content of the issue is as follows. Every link mentioned in the issue is 
-attached at the end of the prompt for your reference. Please analyze the issue 
-and categorize it according to the framework above.
+The content of the issue is as follows. Please analyze the issue and categorize it according to the framework above.
+
+**Information Availability:**
+- If you can request additional information (conversation mode): Referenced issues and pull requests are NOT pre-fetched. You should request specific items you need using:
+  - For issues: "REQUEST: issue #1234"
+  - For pull requests: "REQUEST: PR #5678" or "REQUEST: pull request #5678"
+  - You can request multiple items in a single response
+- If all information is provided upfront (one-shot mode): Every link mentioned in the issue is attached at the end of the prompt for your reference.
