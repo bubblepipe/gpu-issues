@@ -16,10 +16,7 @@ from issue import Issue
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
-# CATEGORIZED_FILE_PATH = '/Users/bubblepipe/repo/gpu-bugs/selected_examples.json'
-# CATEGORIZED_FILE_PATH = '/Users/bubblepipe/repo/gpu-bugs/selected25.json'
-# CATEGORIZED_FILE_PATH = '/Users/bubblepipe/repo/gpu-bugs/selected50.json'
-CATEGORIZED_FILE_PATH = '/Users/bubblepipe/repo/gpu-bugs/selected50_head25.json'
+CATEGORIZED_FILE_PATH = 'reference65.json'
 USE_CATEGORIZED_FILE = True # Set to False to select fresh issues
 # USE_CATEGORIZED_FILE = False  # Set to False to select fresh issues
 
@@ -601,6 +598,27 @@ def is_final_answer(text):
     return bool(re.search(pattern, text))
 
 
+def is_acknowledgment(text):
+    """Check if the LLM response is acknowledging understanding of the framework."""
+    text_lower = text.lower()
+
+    # Check for various acknowledgment patterns
+    acknowledgment_phrases = [
+        "acknowledged",
+        "i understand",
+        "understood",
+        "ready to analyze",
+        "please provide the",
+        "provide the github issue",
+        "send the issue",
+        "ready to categorize",
+        "i'm ready",
+        "framework understood"
+    ]
+
+    return any(phrase in text_lower for phrase in acknowledgment_phrases)
+
+
 def prepare_minimal_prompt(issue):
     """Prepare a minimal prompt with just the issue content (no related issues)."""
     # Fetch timeline and comments for this specific issue
@@ -616,37 +634,34 @@ def prepare_minimal_prompt(issue):
 
 def prepare_conversation_prompt():
     """Create the conversation-aware prompt that allows the LLM to request information."""
-    conversation_instructions = """You are tasked with analyzing a GitHub issue and categorizing it across
-multiple dimensions. You will be provided with the main issue content initially.
-
-## Important: You can request additional information
-
-If you need to understand referenced issues or pull requests to make an accurate categorization,
-you can request them using the following format:
-
-REQUEST: issue #1234
-REQUEST: PR #5678
-
-You can request multiple items in a single response. I will provide the content of those issues/PRs,
-and you can then continue your analysis.
-
-When you have enough information to categorize the issue, provide your final answer following the
-standard format ending with the categorization codes (e.g., "1.d, 2.c, 3.b, 4.a, 5.a").
-
-"""
-
-    # Load the standard prompt and prepend conversation instructions
+    # Load the standard prompt first
     path = os.path.join(os.path.dirname(__file__), "prompt.md")
     with open(path, "r", encoding="utf-8") as f:
         standard_prompt = f.read()
 
-    # Replace the beginning of the standard prompt with our conversation version
     # Find where the "## Analysis Framework" section starts
     framework_start = standard_prompt.find("## Analysis Framework")
     if framework_start > 0:
-        return conversation_instructions + standard_prompt[framework_start:]
+        prompt_content = standard_prompt[framework_start:]
     else:
-        return conversation_instructions + standard_prompt
+        prompt_content = standard_prompt
+
+    # Add conversation-specific instructions at the end
+    conversation_footer = """
+
+## Instructions for This Conversation
+
+1. I will first provide you with the categorization framework (which you just read above).
+2. After you acknowledge understanding, I will provide the GitHub issue to analyze.
+3. If you need additional information about referenced issues or pull requests, you can request them using:
+   - REQUEST: issue #1234
+   - REQUEST: PR #5678
+4. Once you have sufficient information, provide your final categorization as five codes (e.g., "1.d, 2.c, 3.b, 4.a, 5.a").
+
+**Please acknowledge that you understand this categorization framework by responding with "Acknowledged. Please provide the GitHub issue to analyze."**
+"""
+
+    return prompt_content + conversation_footer
 
 
 def parse_llm_output(text):
@@ -1087,11 +1102,9 @@ def ask_opus_4_conversation(issue, debug_mode=False):
     base_repo_match = re.match(r'(https://github\.com/[\w\-]+/[\w\-]+)', issue.html_url)
     base_repo_url = base_repo_match.group(1) if base_repo_match else None
 
-    # Prepare initial minimal prompt
+    # Prepare prompts
     issue_content = prepare_minimal_prompt(issue)
     conversation_prompt = prepare_conversation_prompt()
-
-    initial_prompt = conversation_prompt + "\n\nISSUE CONTENT:\n" + issue_content
 
     # Debug: Setup debug directory
     debug_dir = None
@@ -1100,15 +1113,19 @@ def ask_opus_4_conversation(issue, debug_mode=False):
         debug_dir = f"conversation_debug_{timestamp}"
         os.makedirs(debug_dir, exist_ok=True)
 
-        with open(f"{debug_dir}/initial_prompt.txt", "w") as f:
-            f.write(initial_prompt)
-        print(f"\n[DEBUG] Saved initial prompt to {debug_dir}/initial_prompt.txt")
+        with open(f"{debug_dir}/framework_prompt.txt", "w") as f:
+            f.write(conversation_prompt)
+        print(f"\n[DEBUG] Saved framework prompt to {debug_dir}/framework_prompt.txt")
 
-    # Initialize conversation
+        with open(f"{debug_dir}/issue_content.txt", "w") as f:
+            f.write(issue_content)
+        print(f"[DEBUG] Saved issue content to {debug_dir}/issue_content.txt")
+
+    # Phase 1: Send the categorization framework first
     messages = [
         {
             "role": "user",
-            "content": initial_prompt
+            "content": conversation_prompt
         }
     ]
 
@@ -1139,15 +1156,25 @@ def ask_opus_4_conversation(issue, debug_mode=False):
     # Conversation loop
     max_turns = 10
     fetched_content_cache = {}  # Cache fetched content to avoid re-fetching
+    framework_acknowledged = False
 
     for turn in range(max_turns):
-        print(f"\nConversation turn {turn + 1}/{max_turns}")
+        # Determine phase
+        if not framework_acknowledged:
+            print(f"\nPhase 1: Sending categorization framework (turn {turn + 1}/{max_turns})")
+        else:
+            print(f"\nPhase 2: Conversation turn {turn + 1}/{max_turns}")
 
         # Print the current prompt being sent
         print("\n=== PROMPT BEING SENT ===")
         if messages:
             # Print the last message (what we're sending now)
-            print(messages[-1]['content'])  
+            current_content = messages[-1]['content']
+            # Truncate very long content for display
+            if len(current_content) > 1000:
+                print(current_content[:500] + "\n...[truncated]...\n" + current_content[-500:])
+            else:
+                print(current_content)
             print("=== END PROMPT ===\n")
 
         # Make API request
@@ -1190,8 +1217,37 @@ def ask_opus_4_conversation(issue, debug_mode=False):
                 with open(f"{debug_dir}/messages_turn_{turn + 1}.json", "w") as f:
                     json.dump(messages, f, indent=2)
 
-            print(f"\nLLM Response:\n{text}...")
+            # Truncate response for display
+            display_text = text[:500] + "..." if len(text) > 500 else text
+            print(f"\nLLM Response:\n{display_text}")
 
+            # Phase 1: Check for acknowledgment
+            if not framework_acknowledged:
+                if is_acknowledgment(text):
+                    print("\n✓ Framework acknowledged by LLM")
+                    framework_acknowledged = True
+
+                    # Add the acknowledgment to messages
+                    messages.append({"role": "assistant", "content": text})
+
+                    # Phase 2: Send the issue content
+                    issue_message = f"Here is the GitHub issue to analyze:\n\n{issue_content}"
+                    messages.append({"role": "user", "content": issue_message})
+
+                    # Debug save
+                    if debug_mode:
+                        with open(f"{debug_dir}/acknowledgment_turn_{turn + 1}.txt", "w") as f:
+                            f.write(text)
+                        print(f"[DEBUG] Saved acknowledgment to {debug_dir}/acknowledgment_turn_{turn + 1}.txt")
+
+                    continue  # Continue to next turn to send issue
+                else:
+                    print("\n⚠ LLM did not acknowledge framework. Retrying...")
+                    messages.append({"role": "assistant", "content": text})
+                    messages.append({"role": "user", "content": "Please acknowledge that you understand the categorization framework before we proceed."})
+                    continue
+
+            # Phase 2: Normal conversation handling
             # Check if this is a final answer
             if is_final_answer(text):
                 print("\nFinal answer received!")
