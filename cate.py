@@ -1168,13 +1168,8 @@ def ask_opus_4_conversation(issue, debug_mode=False):
         # Print the current prompt being sent
         print("\n=== PROMPT BEING SENT ===")
         if messages:
-            # Print the last message (what we're sending now)
             current_content = messages[-1]['content']
-            # Truncate very long content for display
-            if len(current_content) > 1000:
-                print(current_content[:500] + "\n...[truncated]...\n" + current_content[-500:])
-            else:
-                print(current_content)
+            print(current_content)
             print("=== END PROMPT ===\n")
 
         # Make API request
@@ -1190,6 +1185,10 @@ def ask_opus_4_conversation(issue, debug_mode=False):
             response.raise_for_status()
 
             json_response = response.json()
+
+            print("====== llm response begin ======")
+            print(json_response)
+            print("====== llm response end ======")
 
             # Extract response text
             content = json_response.get("content", [])
