@@ -30,7 +30,10 @@ LLM_CHOICE = "opus"
 
 # Conversation mode: When True, LLM can request additional information about mentioned issues/PRs
 # When False, uses the old one-shot mode with all related content pre-fetched
-CONVERSATION_MODE = True  
+CONVERSATION_MODE = True
+
+# Verbose streaming: When True, prints ALL streaming data without truncation
+VERBOSE_STREAMING = True  
 
 # GPT-5/OpenAI API Configuration
 # Set to "openai" for official OpenAI API or "neko" for NekoAPI alternative
@@ -632,6 +635,366 @@ def prepare_minimal_prompt(issue):
     return issue_content
 
 
+class SSEStreamHandler:
+    """Handle Server-Sent Events from Claude API streaming responses."""
+
+    def __init__(self, debug_mode=False):
+        self.text_content = ""
+        self.thinking_content = ""
+        self.current_block_type = None
+        self.debug_mode = debug_mode
+        self.event_count = 0
+        self.error_occurred = False
+        self.error_message = None
+        # Stream metadata tracking
+        self.stream_start_time = None
+        self.stream_end_time = None
+        self.first_token_time = None
+        self.chunk_count = 0
+        self.chunk_sizes = []
+        self.event_types_seen = {}
+        self.message_id = None
+        self.model = None
+        self.usage_stats = {}
+
+    def process_stream(self, response):
+        """Process the entire SSE stream from the response."""
+        import datetime
+        self.stream_start_time = datetime.datetime.now()
+        buffer = ""
+        line_count = 0
+
+        if VERBOSE_STREAMING:
+            print(f"\n{'='*100}")
+            print("[STREAM PROCESSING START]")
+            print(f"[START TIME] {self.stream_start_time.isoformat()}")
+            print(f"[RESPONSE HEADERS]")
+            for header, value in response.headers.items():
+                print(f"  {header}: {value}")
+            print(f"{'='*100}")
+
+        try:
+            # Process stream line by line
+            for line in response.iter_lines():
+                line_count += 1
+
+                # Decode line if it's bytes
+                line_str = line.decode('utf-8') if isinstance(line, bytes) else line if line else ''
+
+                if VERBOSE_STREAMING and line_str:
+                    print(f"[RAW LINE #{line_count}] {line_str}")
+                elif VERBOSE_STREAMING and not line_str:
+                    print(f"[RAW LINE #{line_count}] <empty line>")
+
+                # Check for empty line FIRST (signals end of SSE message)
+                if not line_str or line_str == '':
+                    if buffer:
+                        if VERBOSE_STREAMING:
+                            print(f"\n[SSE MESSAGE COMPLETE] Processing buffered message:")
+                            print(f"[BUFFER CONTENT]\n{buffer}")
+                        self._process_sse_message(buffer)
+                        buffer = ""
+                # SSE format: lines starting with "event:" or "data:"
+                elif line_str.startswith('event:') or line_str.startswith('data:'):
+                    buffer += line_str + '\n'
+
+            # Process any remaining buffer
+            if buffer:
+                if VERBOSE_STREAMING:
+                    print(f"\n[FINAL BUFFER] Processing remaining buffer:")
+                    print(f"[BUFFER CONTENT]\n{buffer}")
+                self._process_sse_message(buffer)
+
+            # Stream completed
+            self.stream_end_time = datetime.datetime.now()
+            if VERBOSE_STREAMING:
+                self._print_final_stream_statistics()
+
+        except Exception as e:
+            self.error_occurred = True
+            self.error_message = f"Stream processing error: {e}"
+            self.stream_end_time = datetime.datetime.now()
+            print(f"[ERROR] {self.error_message}")
+            import traceback
+            print(f"[TRACEBACK]\n{traceback.format_exc()}")
+
+        if VERBOSE_STREAMING and not self.stream_end_time:
+            self.stream_end_time = datetime.datetime.now()
+            print(f"\n{'='*80}")
+            print("[STREAM PROCESSING END]")
+            print(f"  Processed {line_count} total lines")
+            print(f"  Final text length: {len(self.text_content)} chars")
+            print(f"  Final thinking length: {len(self.thinking_content)} chars")
+            print(f"{'='*80}")
+
+        return self.text_content, self.thinking_content
+
+    def _process_sse_message(self, message):
+        """Process a single SSE message (event + data pair)."""
+        if VERBOSE_STREAMING:
+            print(f"\n[PARSING SSE MESSAGE]")
+
+        lines = message.strip().split('\n')
+        event_type = None
+        event_data = None
+
+        for line in lines:
+            if VERBOSE_STREAMING:
+                print(f"  [PARSING LINE] {line}")
+
+            if line.startswith('event:'):
+                event_type = line[6:].strip()
+                if VERBOSE_STREAMING:
+                    print(f"  [EVENT TYPE FOUND] {event_type}")
+            elif line.startswith('data:'):
+                try:
+                    data_str = line[5:].strip()
+                    if data_str:
+                        event_data = json.loads(data_str)
+                        if VERBOSE_STREAMING:
+                            print(f"  [DATA PARSED] Success")
+                            # Print FULL JSON without truncation
+                            print(f"  [FULL JSON DATA]\n{json.dumps(event_data, indent=2)}")
+                except json.JSONDecodeError as e:
+                    print(f"  [WARNING] Failed to parse JSON: {e}")
+                    print(f"  [RAW DATA STRING] {data_str}")
+                    continue
+
+        if event_type and event_data:
+            if VERBOSE_STREAMING:
+                print(f"  [HANDLING EVENT] Type: {event_type}")
+            self._handle_event(event_type, event_data)
+        else:
+            if VERBOSE_STREAMING:
+                print(f"  [SKIPPED] Missing event_type or event_data")
+
+    def _handle_event(self, event_type, data):
+        """Handle specific SSE events based on Anthropic's streaming format."""
+        self.event_count += 1
+        import datetime
+
+        # Track event types
+        if event_type not in self.event_types_seen:
+            self.event_types_seen[event_type] = 0
+        self.event_types_seen[event_type] += 1
+
+        if VERBOSE_STREAMING:
+            # Print FULL event details
+            print(f"\n{'='*80}")
+            print(f"[EVENT #{self.event_count}] Type: {event_type}")
+            print(f"[TIMESTAMP] {datetime.datetime.now().isoformat()}")
+            print(f"[FULL EVENT DATA]")
+            print(json.dumps(data, indent=2))
+            print(f"{'='*80}")
+
+        # Handle different event types according to Anthropic's SSE format
+        if event_type == 'message_start':
+            # Initial message with metadata
+            message_data = data.get('message', {})
+            self.message_id = message_data.get('id')
+            self.model = message_data.get('model')
+            self.usage_stats = message_data.get('usage', {})
+            if VERBOSE_STREAMING:
+                print(f"[MESSAGE START] Initial message with metadata")
+                print(f"[MESSAGE ID] {self.message_id}")
+                print(f"[MODEL] {self.model}")
+                print(f"[ROLE] {message_data.get('role', 'N/A')}")
+                print(f"[STOP REASON] {message_data.get('stop_reason', 'N/A')}")
+                print(f"[INITIAL USAGE] {json.dumps(self.usage_stats, indent=2)}")
+
+        elif event_type == 'content_block_start':
+            # Start of a new content block
+            block = data.get('content_block', {})
+            self.current_block_type = block.get('type')
+            if VERBOSE_STREAMING:
+                print(f"[CONTENT BLOCK START] Type: {self.current_block_type}")
+                print(f"[BLOCK INDEX] {data.get('index', 'N/A')}")
+                print(f"[FULL BLOCK DATA] {json.dumps(block, indent=2)}")
+
+        elif event_type == 'content_block_delta':
+            # Incremental content updates
+            delta = data.get('delta', {})
+            delta_type = delta.get('type')
+
+            if delta_type == 'text_delta':
+                text = delta.get('text', '')
+                self.text_content += text
+                self.chunk_count += 1
+                self.chunk_sizes.append(len(text))
+
+                # Track time to first token
+                if not self.first_token_time and text:
+                    self.first_token_time = datetime.datetime.now()
+
+                if VERBOSE_STREAMING:
+                    print(f"[TEXT DELTA RECEIVED - Chunk #{self.chunk_count}]")
+                    print(f"  Chunk size: {len(text)} chars")
+                    print(f"  Chunk content (repr): {repr(text)}")  # Using repr to see escape chars
+                    print(f"  Total text accumulated: {len(self.text_content)} chars")
+                    print(f"  Average chunk size: {sum(self.chunk_sizes)/len(self.chunk_sizes):.1f} chars")
+                    if self.first_token_time:
+                        elapsed = (datetime.datetime.now() - self.first_token_time).total_seconds()
+                        print(f"  Time since first token: {elapsed:.2f}s")
+                    # Print FULL accumulated text so far
+                    print(f"[ACCUMULATED TEXT SO FAR - COMPLETE]\n{self.text_content}")
+                elif not self.debug_mode:
+                    # Still print text as it arrives for non-verbose mode
+                    print(text, end='', flush=True)
+
+            elif delta_type == 'thinking_delta':
+                thinking_text = delta.get('text', '')
+                self.thinking_content += thinking_text
+                self.chunk_count += 1
+                self.chunk_sizes.append(len(thinking_text))
+                if VERBOSE_STREAMING:
+                    print(f"[THINKING DELTA RECEIVED]")
+                    print(f"  Chunk size: {len(thinking_text)} chars")
+                    # Print FULL thinking chunk
+                    print(f"  Chunk content (repr): {repr(thinking_text)}")
+                    print(f"  Total thinking accumulated: {len(self.thinking_content)} chars")
+                    # Print FULL accumulated thinking (no truncation)
+                    print(f"[ACCUMULATED THINKING SO FAR - COMPLETE]\n{self.thinking_content}")
+
+        elif event_type == 'content_block_stop':
+            # End of content block
+            if VERBOSE_STREAMING:
+                print(f"[CONTENT BLOCK STOP] Block type was: {self.current_block_type}")
+                print(f"[BLOCK INDEX] {data.get('index', 'N/A')}")
+            self.current_block_type = None
+
+        elif event_type == 'message_delta':
+            # Top-level message changes (usage stats, etc.)
+            new_usage = data.get('usage', {})
+            if new_usage:
+                self.usage_stats.update(new_usage)
+            if VERBOSE_STREAMING:
+                print(f"[MESSAGE DELTA] Top-level message changes")
+                if new_usage:
+                    print(f"  Updated usage stats:")
+                    print(f"    Output tokens: {new_usage.get('output_tokens', 'N/A')}")
+                    print(f"    Cache creation input tokens: {new_usage.get('cache_creation_input_tokens', 'N/A')}")
+                    print(f"    Cache read input tokens: {new_usage.get('cache_read_input_tokens', 'N/A')}")
+                    print(f"  Full usage: {json.dumps(new_usage, indent=2)}")
+                delta_content = data.get('delta', {})
+                if delta_content:
+                    print(f"  Delta content: {json.dumps(delta_content, indent=2)}")
+
+        elif event_type == 'message_stop':
+            # End of message
+            if VERBOSE_STREAMING:
+                print(f"\n{'='*100}")
+                print(f"[MESSAGE COMPLETE - FINAL SUMMARY]")
+                print(f"  Message ID: {self.message_id}")
+                print(f"  Model: {self.model}")
+                print(f"  Total events processed: {self.event_count}")
+                print(f"  Total chunks received: {self.chunk_count}")
+                print(f"  Final text length: {len(self.text_content)} chars")
+                print(f"  Final thinking length: {len(self.thinking_content)} chars")
+                print(f"\n[EVENT TYPE DISTRIBUTION]")
+                for evt_type, count in sorted(self.event_types_seen.items()):
+                    print(f"  {evt_type}: {count} occurrences")
+                print(f"\n[FINAL USAGE STATISTICS]")
+                print(json.dumps(self.usage_stats, indent=2))
+                print(f"\n[COMPLETE TEXT CONTENT - NO TRUNCATION]\n{self.text_content}")
+                print(f"\n[COMPLETE THINKING CONTENT - NO TRUNCATION]\n{self.thinking_content}")
+                print(f"{'='*100}")
+            elif not self.debug_mode:
+                print()  # New line after streaming text
+
+        elif event_type == 'error':
+            # Error event
+            self.error_occurred = True
+            self.error_message = data.get('message', 'Unknown error')
+            error_type = data.get('type', 'unknown')
+            print(f"\n[ERROR EVENT]")
+            print(f"  Error type: {error_type}")
+            print(f"  Error message: {self.error_message}")
+            print(f"  Full error data: {json.dumps(data, indent=2)}")
+
+        elif event_type == 'ping':
+            # Keep-alive ping
+            if VERBOSE_STREAMING:
+                print(f"[PING] Keep-alive signal received at {datetime.datetime.now().isoformat()}")
+
+    def _print_final_stream_statistics(self):
+        """Print comprehensive streaming statistics after completion."""
+        print(f"\n{'='*120}")
+        print("[FINAL STREAM STATISTICS]")
+        print(f"{'='*120}")
+
+        # Timing statistics
+        print("\n[TIMING INFORMATION]")
+        print(f"  Stream Start: {self.stream_start_time.isoformat()}")
+        print(f"  Stream End: {self.stream_end_time.isoformat()}")
+        total_duration = (self.stream_end_time - self.stream_start_time).total_seconds()
+        print(f"  Total Duration: {total_duration:.2f} seconds")
+
+        if self.first_token_time:
+            time_to_first = (self.first_token_time - self.stream_start_time).total_seconds()
+            print(f"  Time to First Token: {time_to_first:.3f} seconds")
+            generation_time = (self.stream_end_time - self.first_token_time).total_seconds()
+            print(f"  Generation Time: {generation_time:.2f} seconds")
+
+        # Content statistics
+        print("\n[CONTENT STATISTICS]")
+        print(f"  Total Text Characters: {len(self.text_content):,}")
+        print(f"  Total Thinking Characters: {len(self.thinking_content):,}")
+        print(f"  Total Combined Characters: {len(self.text_content) + len(self.thinking_content):,}")
+
+        # Chunk statistics
+        print("\n[CHUNK STATISTICS]")
+        print(f"  Total Chunks: {self.chunk_count}")
+        if self.chunk_sizes:
+            print(f"  Average Chunk Size: {sum(self.chunk_sizes)/len(self.chunk_sizes):.1f} chars")
+            print(f"  Min Chunk Size: {min(self.chunk_sizes)} chars")
+            print(f"  Max Chunk Size: {max(self.chunk_sizes)} chars")
+            print(f"  Total Chunk Data: {sum(self.chunk_sizes):,} chars")
+
+        # Throughput calculations
+        if total_duration > 0:
+            print("\n[THROUGHPUT METRICS]")
+            chars_per_second = (len(self.text_content) + len(self.thinking_content)) / total_duration
+            print(f"  Characters per Second: {chars_per_second:.1f}")
+            if self.chunk_count > 0:
+                chunks_per_second = self.chunk_count / total_duration
+                print(f"  Chunks per Second: {chunks_per_second:.1f}")
+
+        # Event distribution
+        print("\n[EVENT DISTRIBUTION]")
+        for event_type, count in sorted(self.event_types_seen.items()):
+            percentage = (count / self.event_count) * 100 if self.event_count > 0 else 0
+            print(f"  {event_type}: {count} ({percentage:.1f}%)")
+
+        # Token usage summary
+        print("\n[TOKEN USAGE SUMMARY]")
+        if self.usage_stats:
+            print(f"  Input Tokens: {self.usage_stats.get('input_tokens', 'N/A')}")
+            print(f"  Output Tokens: {self.usage_stats.get('output_tokens', 'N/A')}")
+            print(f"  Cache Creation Input Tokens: {self.usage_stats.get('cache_creation_input_tokens', 'N/A')}")
+            print(f"  Cache Read Input Tokens: {self.usage_stats.get('cache_read_input_tokens', 'N/A')}")
+
+            # Calculate token rate if we have output tokens
+            output_tokens = self.usage_stats.get('output_tokens')
+            if output_tokens and total_duration > 0:
+                tokens_per_second = output_tokens / total_duration
+                print(f"  Token Generation Rate: {tokens_per_second:.1f} tokens/second")
+
+        # Model and message info
+        print("\n[MESSAGE METADATA]")
+        print(f"  Message ID: {self.message_id or 'N/A'}")
+        print(f"  Model: {self.model or 'N/A'}")
+
+        # Error status
+        print("\n[COMPLETION STATUS]")
+        if self.error_occurred:
+            print(f"  Status: ERROR")
+            print(f"  Error Message: {self.error_message}")
+        else:
+            print(f"  Status: SUCCESS")
+
+        print(f"\n{'='*120}")
+
+
 def prepare_conversation_prompt():
     """Create the conversation-aware prompt that allows the LLM to request information."""
     # Load the standard prompt first
@@ -1172,38 +1535,75 @@ def ask_opus_4_conversation(issue, debug_mode=False):
             print(current_content)
             print("=== END PROMPT ===\n")
 
-        # Make API request
+        # Make API request with streaming enabled
         data = {
             "model": "claude-opus-4-1-20250805-thinking",
             "group": "claude",
-            "temperature": 0.1,
-            "messages": messages
+            "temperature": 1,
+            "messages": messages,
+            "thinking": {
+                "type": "enabled",
+                "budget_tokens": 64000  # Maximum thinking budget for thorough analysis
+            },
+            "max_tokens": 80000,  # Must be > budget_tokens
+            "stream": True  # Enable streaming for large responses
         }
 
         try:
-            response = requests.post(url, headers=headers, json=data)
+            # Make streaming request
+            response = requests.post(url, headers=headers, json=data, stream=True, timeout=300)
             response.raise_for_status()
 
-            json_response = response.json()
+            # Check if we got a streaming response
+            content_type = response.headers.get('content-type', '')
 
-            print("====== llm response begin ======")
-            print(json_response)
-            print("====== llm response end ======")
+            if 'text/event-stream' in content_type:
+                # Handle SSE streaming response
+                if debug_mode:
+                    print("\n[DEBUG] Processing streaming response...")
 
-            # Extract response text
-            content = json_response.get("content", [])
-            text = None
+                sse_handler = SSEStreamHandler(debug_mode=debug_mode)
+                text, thinking_text = sse_handler.process_stream(response)
 
-            for item in content:
-                if isinstance(item, dict) and item.get("type") == "text":
-                    text = item.get("text", "")
-                    break
+                # Check for errors during streaming
+                if sse_handler.error_occurred:
+                    raise Exception(f"Streaming error: {sse_handler.error_message}")
 
-            if text is None and content and isinstance(content[0], dict):
-                text = content[0].get("text", "")
+                # Save thinking content if in debug mode
+                if debug_mode and thinking_text:
+                    with open(f"{debug_dir}/thinking_turn_{turn + 1}.txt", "w") as f:
+                        f.write(thinking_text)
+                    print(f"\n[DEBUG] Saved thinking content ({len(thinking_text)} chars)")
 
-            if not text:
-                raise KeyError("No text content found in response")
+            else:
+                # Fallback to non-streaming response (shouldn't happen with stream=True)
+                if debug_mode:
+                    print("\n[DEBUG] Got non-streaming response, parsing as JSON...")
+
+                json_response = response.json()
+
+                if debug_mode:
+                    print("====== llm response begin ======")
+                    print(json_response)
+                    print("====== llm response end ======")
+
+                # Extract response text from non-streaming format
+                content = json_response.get("content", [])
+                text = None
+                thinking_text = ""
+
+                for item in content:
+                    if isinstance(item, dict):
+                        if item.get("type") == "text":
+                            text = item.get("text", "")
+                        elif item.get("type") == "thinking":
+                            thinking_text = item.get("text", "")
+
+                if text is None and content and isinstance(content[0], dict):
+                    text = content[0].get("text", "")
+
+                if not text:
+                    raise KeyError("No text content found in response")
 
             # Debug: Save raw response
             if debug_mode:
@@ -1216,9 +1616,9 @@ def ask_opus_4_conversation(issue, debug_mode=False):
                 with open(f"{debug_dir}/messages_turn_{turn + 1}.json", "w") as f:
                     json.dump(messages, f, indent=2)
 
-            # Truncate response for display
-            display_text = text[:500] + "..." if len(text) > 500 else text
-            print(f"\nLLM Response:\n{display_text}")
+            # Response already displayed during streaming, just add a newline if needed
+            if debug_mode:
+                print(f"\n[DEBUG] Response received: {len(text)} chars")
 
             # Phase 1: Check for acknowledgment
             if not framework_acknowledged:
@@ -1291,8 +1691,16 @@ def ask_opus_4_conversation(issue, debug_mode=False):
                 messages.append({"role": "assistant", "content": text})
                 messages.append({"role": "user", "content": "Please continue your analysis and provide the final categorization."})
 
+        except requests.exceptions.Timeout as e:
+            provider_name = "NekoAPI" if OPUS_API_PROVIDER == "neko" else "Anthropic API"
+            return Err(f"Streaming request timed out after 300 seconds with {provider_name}: {e}")
+        except requests.exceptions.ChunkedEncodingError as e:
+            provider_name = "NekoAPI" if OPUS_API_PROVIDER == "neko" else "Anthropic API"
+            return Err(f"Streaming connection interrupted with {provider_name}: {e}")
         except requests.exceptions.RequestException as e:
             provider_name = "NekoAPI" if OPUS_API_PROVIDER == "neko" else "Anthropic API"
+            print( response.json())
+            # exit(0)
             return Err(f"Network error calling {provider_name}: {e}")
         except (IndexError, KeyError) as e:
             provider_name = "NekoAPI" if OPUS_API_PROVIDER == "neko" else "Anthropic API"
@@ -1355,9 +1763,9 @@ def ask_opus_4(issue, debug_mode=False):
         }
         print("Using Anthropic API")
     
-    # Common request data for both APIs
+    # Common request data for both APIs with streaming enabled
     data = {
-        "model": "claude-opus-4-1-20250805-thinking", 
+        "model": "claude-opus-4-1-20250805-thinking",
         "group": "claude",
         "temperature": 0.1,
         "messages": [
@@ -1365,36 +1773,78 @@ def ask_opus_4(issue, debug_mode=False):
                 "role": "user",
                 "content": full_prompt
             }
-        ]
+        ],
+        "thinking": {
+            "type": "enabled",
+            "budget_tokens": 64000  # Maximum thinking budget for thorough analysis
+        },
+        "max_tokens": 80000,  # Must be > budget_tokens
+        "stream": True  # Enable streaming for large responses
     }
-    
+
     try:
-        response = requests.post(url, headers=headers, json=data)
+        # Make streaming request
+        response = requests.post(url, headers=headers, json=data, stream=True, timeout=300)
         response.raise_for_status()
-        
-        json_response = response.json()
-        
-        # Handle different response formats (with or without thinking)
-        content = json_response.get("content", [])
-        text = None
-        
-        # Look for the text content (skip thinking content)
-        for item in content:
-            if isinstance(item, dict) and item.get("type") == "text":
-                text = item.get("text", "")
-                break
-        
-        # Fallback to old format if no text type found
-        if text is None and content and isinstance(content[0], dict):
-            text = content[0].get("text", "")
-        
-        if not text:
-            raise KeyError("No text content found in response")
-            
-        print(text)
+
+        # Check if we got a streaming response
+        content_type = response.headers.get('content-type', '')
+
+        if 'text/event-stream' in content_type:
+            # Handle SSE streaming response
+            print("\nProcessing streaming response...\n")
+            sse_handler = SSEStreamHandler(debug_mode=debug_mode)
+            text, thinking_text = sse_handler.process_stream(response)
+
+            # Check for errors during streaming
+            if sse_handler.error_occurred:
+                raise Exception(f"Streaming error: {sse_handler.error_message}")
+
+            # In debug mode, save thinking content
+            if debug_mode and thinking_text:
+                import datetime
+                timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                thinking_file = f"opus_thinking_{timestamp}.txt"
+                with open(thinking_file, "w") as f:
+                    f.write(thinking_text)
+                print(f"\n[DEBUG] Saved thinking content to {thinking_file} ({len(thinking_text)} chars)")
+
+        else:
+            # Fallback to non-streaming response (shouldn't happen with stream=True)
+            print("\nProcessing non-streaming response...\n")
+            json_response = response.json()
+
+            # Handle different response formats (with or without thinking)
+            content = json_response.get("content", [])
+            text = None
+            thinking_text = ""
+
+            # Look for the text content (and thinking content if present)
+            for item in content:
+                if isinstance(item, dict):
+                    if item.get("type") == "text":
+                        text = item.get("text", "")
+                    elif item.get("type") == "thinking":
+                        thinking_text = item.get("text", "")
+
+            # Fallback to old format if no text type found
+            if text is None and content and isinstance(content[0], dict):
+                text = content[0].get("text", "")
+
+            if not text:
+                raise KeyError("No text content found in response")
+
+            # Print the text response
+            print(text)
         print()
         return parse_llm_output(text)
         
+    except requests.exceptions.Timeout as e:
+        provider_name = "NekoAPI" if OPUS_API_PROVIDER == "neko" else "Anthropic API"
+        return Err(f"Streaming request timed out after 300 seconds with {provider_name}: {e}")
+    except requests.exceptions.ChunkedEncodingError as e:
+        provider_name = "NekoAPI" if OPUS_API_PROVIDER == "neko" else "Anthropic API"
+        return Err(f"Streaming connection interrupted with {provider_name}: {e}")
     except requests.exceptions.RequestException as e:
         provider_name = "NekoAPI" if OPUS_API_PROVIDER == "neko" else "Anthropic API"
         return Err(f"Network error calling {provider_name}: {e}")
@@ -1472,7 +1922,7 @@ def main():
         for item in categorization:
             print(" - " + item.value, file=sys.stderr)
         print()
-        exit(0)
+        # exit(0)
         
     # Save categorized issues to a file
     if issues_categorized:
